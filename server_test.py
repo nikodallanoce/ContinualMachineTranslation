@@ -1,0 +1,5 @@
+import torch
+
+if __name__ == '__main__':
+    print(torch.cuda.device_count())
+    torch.cuda.empty_cache()

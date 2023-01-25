@@ -1,3 +1,5 @@
+from typing import List
+
 import torch
 from torch import nn, Tensor
 from torch.cuda.amp import GradScaler
@@ -10,9 +12,11 @@ class MBart(nn.Module):
 
     def __init__(self, mBart_config: MBartConfig):
         super(MBart, self).__init__()
-        self.dev = 'cuda:0' if torch.cuda.is_available() else 'cpu'
-
-        self.model: MBartForConditionalGeneration = MBartForConditionalGeneration(mBart_config).to(self.dev)
+        self.model: MBartForConditionalGeneration = MBartForConditionalGeneration(mBart_config)  # .to(self.dev)
+        self.model = nn.DataParallel(self.model, device_ids=[2, 3])
+        self.dev = f'cuda:{self.model.device_ids[0]}' if torch.cuda.is_available() else 'cpu'
+        self.model = self.model.to(self.dev)
+        # model.to(device)
 
     def fit(self, train_loader, optimizer, epochs, val_loader=None):
         scaler = GradScaler()
@@ -23,23 +27,24 @@ class MBart(nn.Module):
             eta = tqdm(train_loader)
             for n_batch, batch in enumerate(eta):
                 loss = self.training_step(batch, optimizer, scaler, n_batch, 32).item()
-                #self.evaluate(batch)
+                # self.evaluate(batch)
                 epoch_loss += loss
                 eta.set_postfix(loss=str(epoch_loss / (n_batch + 1))[0:6])
 
-    def training_step(self, batch: list[torch.Tensor], optimizer: Optimizer, scaler: GradScaler, batch_id: int,
+    def training_step(self, batch: List[torch.Tensor], optimizer: Optimizer, scaler: GradScaler, batch_id: int,
                       acc_step: int) -> Tensor:
-        # input_ids, att_mask = batch[0]
+        # label_ids, att_mask = batch[0]
 
-        input_ids, att_mask, masked_ids = batch
-        input_ids: Tensor = input_ids.to(self.dev)
+        label_ids, att_mask, masked_ids = batch
+        label_ids: Tensor = label_ids.to(self.dev)
         att_mask: Tensor = att_mask.to(self.dev)
         masked_ids: Tensor = masked_ids.to(self.dev)
 
-        with torch.amp.autocast(device_type='cuda', dtype=torch.float16):
-            loss = self.model(masked_ids, att_mask, labels=input_ids).loss
+        # with torch.cuda.amp.autocast(device_type='cuda', dtype=torch.float16):
+        with torch.cuda.amp.autocast():
+            loss = self.model(masked_ids, att_mask, labels=label_ids).loss
             # loss = loss / acc_step
-
+        loss = loss.mean()
         scaler.scale(loss).backward()  # loss.backward()
         # if (batch_id + 1) % acc_step == 0:
         scaler.step(optimizer)  # optimizer.step()
@@ -47,7 +52,7 @@ class MBart(nn.Module):
         optimizer.zero_grad(set_to_none=True)
         return loss
 
-    def evaluate(self, batch: list[torch.Tensor], mask_id: int = 250026):
+    def evaluate(self, batch: List[torch.Tensor], mask_id: int = 250026):
         input_ids, att_mask, masked_ids = batch
         input_ids: Tensor = input_ids.to(self.dev)
         att_mask: Tensor = att_mask.to(self.dev)

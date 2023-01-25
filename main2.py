@@ -26,7 +26,7 @@ def model_size(model):
 
 
 if __name__ == '__main__':
-    #torch.backends.cudnn.benchmark = True
+    # torch.backends.cudnn.benchmark = True
     print(torch.cuda.is_available())
 
     tokenizer = MBartTokenizer.from_pretrained("facebook/mbart-large-cc25", src_lang="en_XX")
@@ -40,7 +40,8 @@ if __name__ == '__main__':
     print(model_size(model))
 
     dataset_loaded = load_from_disk("europarl_eng_tokenized")
+    # concat_ds = concatenate_datasets([dataset_loaded, dataset_loaded])
 
-    my_ds = OriginalDataset(dataset_loaded, tokenizer, 1e-4)
-    ds_en_loader = DataLoader(my_ds, batch_size=4, drop_last=True, shuffle=True)
-    model.fit(ds_en_loader, AdamW(model.parameters()), epochs=5)
+    my_ds = OriginalDataset(dataset_loaded, tokenizer, 1)
+    ds_en_loader = DataLoader(my_ds, batch_size=32, drop_last=True, shuffle=True, pin_memory=True, num_workers=16)
+    model.fit(ds_en_loader, Adam(model.parameters()), epochs=5)

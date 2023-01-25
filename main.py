@@ -9,7 +9,7 @@ from torch.utils import data
 from MBart import MBart
 from random import random
 import numpy as np
-
+from typing import List
 def model_size(model):
     param_size = 0
     for param in model.parameters():
@@ -27,7 +27,7 @@ def batch_iterator(dataset, batch_size=10000):
         yield dataset[i: i + batch_size]
 
 
-def tokenize(examples: list[str], **kwargs):
+def tokenize(examples: List[str], **kwargs):
     tokenizer: MBartTokenizer = kwargs['tokenizer']
     mask_percentage = kwargs['mask_percentage']
 
@@ -36,19 +36,6 @@ def tokenize(examples: list[str], **kwargs):
                                  max_length=tokenizer.model_max_length // 8, padding='max_length', return_tensors='pt')
 
     return {'input_ids': tokenized_inputs.data['input_ids']}
-
-
-def mask_tokens(tokenized_ids, mask_percentage, tokenizer):
-    # replace some token that differ from the special ones with a mask token
-    for sentence_ids in tokenized_ids:
-        # sentence:np.ndarray = sentence_ids
-        for j in range(sentence_ids.shape[0]):
-            if sentence_ids[j] == 1:
-                break
-            if sentence_ids[j] not in tokenizer.all_special_ids:
-                if random() <= mask_percentage:  # and sentence_ids[j - 1] != tokenizer.mask_token_id:
-                    sentence_ids[j] = tokenizer.mask_token_id
-    return tokenized_ids
 
 
 # Press the green button in the gutter to run the script.
@@ -63,7 +50,7 @@ if __name__ == '__main__':
 
     # print('model size: {:.3f}MB'.format(model_size(model)))
 
-    dataset_europarl = load_dataset("g8a9/europarl_en-it", split='train')
+    dataset_europarl = load_dataset("g8a9/europarl_en-it", split='train', streaming=True)
     dataset_europarl = dataset_europarl.remove_columns('Unnamed: 0')
 
     # multiprocessing.cpu_count()
@@ -73,10 +60,16 @@ if __name__ == '__main__':
     tokenizer = MBartTokenizer.from_pretrained("facebook/mbart-large-cc25", src_lang="en_XX")
     tok_ris = tokenizer("Hello! My name, is Jack. How are you?", max_length=20,
                         padding='max_length', add_special_tokens=True)
-    tok = dataset_europarl.map(tokenize, batched=True, num_proc=1, batch_size=10000,
+    tok = dataset_europarl.map(tokenize, batched=True,
                                input_columns=['sent_en'], fn_kwargs={'tokenizer': tokenizer, 'mask_percentage': 0.3})
-
+    # tok = dataset_europarl.map(tokenize, batched=True, num_proc=1, batch_size=10000,
+    #                             input_columns=['sent_en'], fn_kwargs={'tokenizer': tokenizer, 'mask_percentage': 0.3})
     tok = tok.remove_columns(['sent_en', 'sent_it'])
-    tok.save_to_disk("europarl_eng_tokenized")
+    tok = tok.with_format('torch')
+    # dataset_europarl = load_dataset("yhavinga/ccmatrix", "en-nl", split='train', streaming=True)
+    # dataset_europarl = dataset_europarl.with_format("torch")
+    for e in torch.utils.data.DataLoader(tok, batch_size=2):
+        print()
+    #tok.save_to_disk("europarl_eng_tokenized")
 
 # See PyCharm help at https://www.jetbrains.com/help/pycharm/
