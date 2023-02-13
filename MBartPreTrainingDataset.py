@@ -7,6 +7,7 @@ from torch.utils.data import Dataset
 from torch import Tensor
 from transformers import PreTrainedTokenizer
 import datasets, random
+from noise_functions import BARTNoiseFunction
 
 from MBartNoiseFunction import MBartNoiseFunction
 
@@ -22,20 +23,22 @@ class MBartPreTrainingDataset(Dataset):
         self.lang = lang
         self.input_max_length = input_max_length
         self.special_ids: Set[int] = set(tokenizer.all_special_ids)
-        self.end_of_sentence_ids: Set[int] = {5, 32, 38}
+        self.end_of_sentence_ids: Set[int] = {5}  # , 32, 38}
         self.special_ids_plus_eose: Set[int] = self.special_ids.union(self.end_of_sentence_ids)
         self.noise_fn = MBartNoiseFunction(lang=lang)
+        self.bart_noise_fn = BARTNoiseFunction(None)
         self.imax = 0
 
     def __len__(self):
         return len(self.hugg_dataset)
 
     def __getitem__(self, index):
-        label_ids = self.hugg_dataset[index]['text']
+        #label_ids = self.hugg_dataset[index]['text']
+        label_ids = self.hugg_dataset[index]['sent_en']
         new_index = index
-        while len(label_ids) < 4:
+        while len(label_ids) < 5:
             new_index = random.randint(0, self.hugg_dataset.num_rows - 1)
-            label_ids = self.hugg_dataset[new_index]['text']
+            label_ids = self.hugg_dataset[new_index]['sent_en']
 
         label_ids, masked_ids = self.noise_fn.compute(label_ids, new_index)
         tokenized = self.tokenizer([label_ids, masked_ids], return_special_tokens_mask=False,
@@ -45,7 +48,13 @@ class MBartPreTrainingDataset(Dataset):
 
         label_ids = tokenized[0].view(-1)
         masked_ids = tokenized[1].view(-1)
-        masked_ids = self.permute(masked_ids, new_index)  # self.permute(label_ids, index)
+
+        #masked_ids = self.permute(masked_ids, new_index)  # self.permute(label_ids, index)
+        # not_ones = torch.numel(masked_ids) - (masked_ids == 1).sum()
+        # if int(not_ones) < 4:
+        #     print(label_ids)
+        #     print(masked_ids)
+        #     assert False
         att_mask = torch.where(masked_ids != 1, 1, 0)
         # masked_ids = self.mask_tokens(masked_ids, index, 0.35)
         label_ids = torch.where(label_ids == 1, -100, label_ids)
@@ -54,9 +63,8 @@ class MBartPreTrainingDataset(Dataset):
 
     def permute(self, tokenized_ids: Tensor, seed: int) -> Tensor:
         sosi = self.get_punctuation_indexes(tokenized_ids)
-        random.seed(seed)
-
-        return self.permute_sentence(tokenized_ids, sosi)
+        permuted_sentences = self.permute_sentence(tokenized_ids, sosi, seed)
+        return permuted_sentences
 
     # def permute_sentence(self, original_row: Tensor, start_of_sentence_indexes: List[int]) -> Tensor:
     #     target_row = torch.ones_like(original_row)
@@ -79,16 +87,17 @@ class MBartPreTrainingDataset(Dataset):
     #             i = i + 1
     #     return target_row
 
-    def permute_sentence(self, original_row: Tensor, start_of_sentence_indexes: List[int]) -> Tensor:
+    def permute_sentence(self, original_row: Tensor, start_of_sentence_indexes: List[int], seed:int) -> Tensor:
         target_row = torch.ones_like(original_row)
         i_max = start_of_sentence_indexes[-1]
+        rng = np.random.default_rng(seed)
         # if i_max > self.imax:
         #    self.imax = i_max
         #    print(i_max)
         start_end_sent_idx: List[Tuple[int, int]] = []
         for i in range(len(start_of_sentence_indexes) - 1):
             start_end_sent_idx.append((start_of_sentence_indexes[i], start_of_sentence_indexes[i + 1]))
-        random.shuffle(start_end_sent_idx)
+        rng.shuffle(start_end_sent_idx)
 
         i = 0
         for i_s, i_e in start_end_sent_idx:
@@ -104,8 +113,8 @@ class MBartPreTrainingDataset(Dataset):
         for i in range(len(row_ids)):
             tok_ids = int(row_ids[i])
             if tok_ids == self.tokenizer.eos_token_id:
-                # if int(row_ids[i - 1]) not in self.end_of_sentence_ids:
-                # start_of_sentences.append(i)
+                if int(row_ids[i - 1]) not in self.end_of_sentence_ids:
+                    start_of_sentences.append(i)
                 break
             if tok_ids in self.end_of_sentence_ids:
                 start_of_sentences.append(i + 1)
@@ -117,7 +126,7 @@ class MBartPreTrainingDataset(Dataset):
         masked_ids = torch.ones_like(tokenized_ids)
         tokens_length = int((tokenized_ids == self.tokenizer.eos_token_id).nonzero(as_tuple=True)[0])
         num_tokens_to_mask = round(tokens_length * mask_percentage)
-        np.random.seed(seed)
+        rng = np.random.default_rng(seed)
         m_start = 0
         t_end = 0
 
@@ -125,7 +134,7 @@ class MBartPreTrainingDataset(Dataset):
             mask_span_len = np.random.poisson(3.5)
             if mask_span_len > num_tokens_to_mask:
                 mask_span_len = num_tokens_to_mask
-            index = np.random.randint(t_end, tokens_length - num_tokens_to_mask)
+            index = rng.integers(t_end, tokens_length - num_tokens_to_mask)
             m_end = m_start + index - t_end
             masked_ids[m_start: m_end] = tokenized_ids[t_end: index]
             t_end = index + mask_span_len

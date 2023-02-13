@@ -12,6 +12,7 @@ class MBartNoiseFunction:
         self.eos_sep: str = eos_sep
         self.mask_token: str = mask_token
         self.lang = lang
+        self.full_stop = "."
 
     # def compute(self, sentence: str, seed: int = 0) -> Tuple[str, str]:
     #     sentence = sentence.strip()
@@ -44,22 +45,28 @@ class MBartNoiseFunction:
 
     def compute(self, sentence: str, seed: int = 0) -> Tuple[str, str]:
         sentence = sentence.strip()
-        words: np.ndarray = np.array(sentence.split(" "), dtype=np.str)
+        rng = np.random.default_rng(seed)
+        permuted_sent = [sent.strip() for sent in filter(None, sentence.split(self.full_stop))]
+        rng.shuffle(permuted_sent)
 
-        #sentence += " " + self.eos_sep + " " + self.lang
+        permuted_sent = (self.full_stop + " ").join(permuted_sent).rstrip() + self.full_stop
+
+        words: np.ndarray = np.array(permuted_sent.split(" "), dtype=np.str)
+
+        # sentence += " " + self.eos_sep + " " + self.lang
 
         self.span_masking(words, seed)
 
-        masked_words = " ".join(filter(None, words)) #+ " " + self.eos_sep + " " + self.lang
+        masked_words = " ".join(filter(None, words))  # + " " + self.eos_sep + " " + self.lang
         return sentence, masked_words
 
     def span_masking(self, words: np.ndarray, seed: int):
         tokens_length = len(words)
         num_tokens_to_mask = round(tokens_length * self.mask_percentage)
-        np.random.seed(seed)
+        rng = np.random.default_rng(seed)
         m_end = 0
         while num_tokens_to_mask > 0 and m_end < (tokens_length - num_tokens_to_mask):
-            mask_span_len = np.random.poisson(3.5)
+            mask_span_len = rng.poisson(3.5)
             if mask_span_len > num_tokens_to_mask:
                 mask_span_len = num_tokens_to_mask
             index = np.random.randint(m_end, tokens_length - num_tokens_to_mask)

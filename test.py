@@ -43,17 +43,21 @@ if __name__ == '__main__':
     #                             cache_dir="test_hugg_en/", split='train',
     #                             ignore_verifications=True)
 
-    pre_train_ds = load_dataset("text", data_files={"train": ["/data/n.dallanoce/cc100/en.txt"]},
-                                cache_dir="/data/n.dallanoce/cc100/hugg_en", split='train[:1024]',
-                                ignore_verifications=True)
+    # pre_train_ds = load_dataset("text", data_files={"train": ["/data/n.dallanoce/cc100/en.txt"]},
+    #                             cache_dir="/data/n.dallanoce/cc100/hugg_en", split=f"train[{300000}:{360000}]",
+    #                             ignore_verifications=True)
+
+    noise_fn.compute("Hello point. And she is. How is him? Sorry for that.")
 
     tok_en = MBartTokenizer.from_pretrained("facebook/mbart-large-cc25", src_lang="en_XX")
+    t = tok_en("Hello sir... . I buy on amazon.com.")
+    tokens = tok_en.batch_decode(t.input_ids)
 
-    pre_train_ds = MBartPreTrainingDataset(pre_train_ds, tok_en, "en_XX")
-
-    mbart_config = MBartConfig(encoder_layers=6, decoder_layers=6,
-                               encoder_ffn_dim=2048, decoder_ffn_dim=2048,
-                               encoder_attention_heads=8, decoder_attention_heads=8,
-                               d_model=512, max_length=128, vocab_size=tok_en.vocab_size)
-    #testing()
-    train()
+    # pre_train_ds = MBartPreTrainingDataset(pre_train_ds, tok_en, "en_XX")
+    #
+    # mbart_config = MBartConfig(encoder_layers=6, decoder_layers=6,
+    #                            encoder_ffn_dim=2048, decoder_ffn_dim=2048,
+    #                            encoder_attention_heads=8, decoder_attention_heads=8,
+    #                            d_model=512, max_length=128, vocab_size=tok_en.vocab_size)
+    # testing()
+    #train()

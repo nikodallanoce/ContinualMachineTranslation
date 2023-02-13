@@ -18,9 +18,15 @@ class NoiseFunction(object):
     """
 
     def __init__(self, config):
-        self.config = config
+        self.special_prefix_tokens = []
+        self.remove_special_prefix_tokens_from_target = False
+        self.noise_over_multiple_sentences = False
+        self.full_sentence_separator = "."
+        self.noise_token_replacement_rate = 0.35
+        self.noise_span_avg_length = 3.5
+        self.noise_mask_token = "<mask>"
 
-    def apply_noise(self, segment):
+    def apply_noise(self, segment, seed):
         """
         Apply noise to a segment and return source and target versions.
         Target can be equal to the original segment, but not necessarily, depending on the noise function
@@ -32,18 +38,18 @@ class NoiseFunction(object):
         """
         Utility function to extract special prefix tokens
         """
-        if len(self.config.special_prefix_tokens) == 0:
+        if len(self.special_prefix_tokens) == 0:
             return [], sentence_tokens
         rv = []
         for i, token in enumerate(sentence_tokens):
-            if token in self.config.special_prefix_tokens:  # we assume that special_prefix_tokens is small, hence checking for membership is faster for an array than a set
+            if token in self.special_prefix_tokens:  # we assume that special_prefix_tokens is small, hence checking for membership is faster for an array than a set
                 rv.append(token)
             else:
                 break
         return rv, sentence_tokens[i:]
 
     def assemble_target(self, prefix_tokens, tokens):
-        if self.config.remove_special_prefix_tokens_from_target:
+        if self.remove_special_prefix_tokens_from_target:
             return ' '.join(tokens)
         else:
             return ' '.join(prefix_tokens + tokens)
@@ -58,7 +64,7 @@ class CopyNoiseFunction(NoiseFunction):
     def __init__(self, config):
         super(CopyNoiseFunction, self).__init__(config)
 
-    def apply_noise(self, segment):
+    def apply_noise(self, segment, seed=0):
         tgt_segment = self.assemble_target(*self.extract_special_prefix_tokens(segment.split()))
         return segment, segment
 
@@ -74,14 +80,14 @@ class ShuffleNoiseFunction(NoiseFunction):
     def __init__(self, config):
         super(ShuffleNoiseFunction, self).__init__(config)
 
-    def apply_noise(self, segment):
-        if self.config.noise_over_multiple_sentences:
+    def apply_noise(self, segment, seed):
+        if self.noise_over_multiple_sentences:
             tokens = segment.split()
             src_segment = self.internal_apply_noise(tokens)
         else:
             src_segment_list = [self.internal_apply_noise(sentence) for sentence in
-                                segment.split(self.config.full_sentence_separator)]
-            src_segment = self.config.full_sentence_separator.join(src_segment_list)
+                                segment.split(self.full_sentence_separator)]
+            src_segment = self.full_sentence_separator.join(src_segment_list)
         return src_segment, segment
 
     def internal_apply_noise(self, x):
@@ -103,38 +109,39 @@ class BARTNoiseFunction(NoiseFunction):
     def __init__(self, config):
         super(BARTNoiseFunction, self).__init__(config)
 
-    def apply_noise(self, segment):
-        if self.config.noise_over_multiple_sentences:
+    def apply_noise(self, segment, seed):
+        random.seed(seed)
+        if self.noise_over_multiple_sentences:
             tokens = segment.split()
             prefix, tokens = self.extract_special_prefix_tokens(tokens)
             src_segment = self.internal_apply_noise(prefix, tokens)
             tgt_segment = self.assemble_target(prefix, tokens)
         else:
-            segment_list = segment.split(self.config.full_sentence_separator)
+            segment_list = segment.split(self.full_sentence_separator)
             src_segment_list = segment_list.copy()
             random.shuffle(src_segment_list)  # whole sentence shuffling
             src_segment_list = [self.internal_apply_noise(*self.extract_special_prefix_tokens(sentence.split())) for
                                 sentence in src_segment_list]
-            src_segment = self.config.full_sentence_separator.join(src_segment_list)
+            src_segment = self.full_sentence_separator.join(src_segment_list)
             tgt_segment_list = [self.assemble_target(*self.extract_special_prefix_tokens(sentence.split())) for sentence
                                 in segment_list]
-            tgt_segment = self.config.full_sentence_separator.join(tgt_segment_list)
+            tgt_segment = self.full_sentence_separator.join(tgt_segment_list)
         return src_segment, tgt_segment
 
     def internal_apply_noise(self, prefix, tokens):
         # print(prefix, tokens, file=sys.stderr)
-        num_tokens_to_replace = int(len(tokens) * self.config.noise_token_replacement_rate)
+        num_tokens_to_replace = int(len(tokens) * self.noise_token_replacement_rate)
         rv_tokens = []
         last_i = 0
         just_added_empty_span = False
         while (num_tokens_to_replace > 0):
-            span_length = np.random.poisson(self.config.noise_span_avg_length)
+            span_length = np.random.poisson(self.noise_span_avg_length)
             if span_length > num_tokens_to_replace:
                 span_length = num_tokens_to_replace
             i = np.random.randint(last_i, len(tokens) - num_tokens_to_replace)
             rv_tokens.extend(tokens[last_i:i])
-            if (len(rv_tokens) == 0) or (rv_tokens[-1] != self.config.noise_mask_token):
-                rv_tokens.append(self.config.noise_mask_token)
+            if (len(rv_tokens) == 0) or (rv_tokens[-1] != self.noise_mask_token):
+                rv_tokens.append(self.noise_mask_token)
             last_i = i + span_length
             num_tokens_to_replace -= span_length
         rv_tokens.extend(tokens[last_i:])
@@ -142,3 +149,8 @@ class BARTNoiseFunction(NoiseFunction):
 
 
 noise_functions_dict['bart'] = BARTNoiseFunction
+
+if __name__ == '__main__':
+    src, trg = BARTNoiseFunction(None).apply_noise(
+        "To buy: google $17 for a set of 10. Do you like pizza. Go ahead. Good Morning.", 0)
+    print()
