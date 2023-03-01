@@ -14,50 +14,26 @@ class MBartNoiseFunction:
         self.lang = lang
         self.full_stop = "."
 
-    # def compute(self, sentence: str, seed: int = 0) -> Tuple[str, str]:
-    #     sentence = sentence.strip()
-    #     words: np.ndarray = np.array(sentence.split(" "), dtype=np.str)
-    #     indexes_of_eos: List[int] = self.get_indexes_eos_token(words)
-    #     indexes_of_eos.reverse()
-    #
-    #     sentence = self.insert_eos(words.copy(), indexes_of_eos)
-    #     sentence = " ".join(sentence) + " " + self.lang
-    #
-    #     self.span_masking(words, seed)
-    #
-    #     masked_words = self.insert_eos(words, indexes_of_eos)
-    #
-    #     #p = " ".join(filter(None, masked_words))
-    #     sentence_list = []
-    #     sent = ""
-    #     for w in masked_words:
-    #         if w != "":
-    #             sent += w
-    #             if w.endswith(self.eos_sep):
-    #                 sentence_list.append(sent)
-    #                 sent = ""
-    #             else:
-    #                 sent += " "
-    #     random.seed(seed)
-    #     random.shuffle(sentence_list)
-    #     masked_words = " ".join(sentence_list) + " " + self.lang
-    #     return sentence, masked_words
-
     def compute(self, sentence: str, seed: int = 0) -> Tuple[str, str]:
         sentence = sentence.strip()
         rng = np.random.default_rng(seed)
-        permuted_sent = [sent.strip() for sent in filter(None, sentence.split(self.full_stop))]
+        permuted_sent: np.ndarray = np.array([sent.strip() for sent in filter(None, sentence.split(self.eos_sep))],
+                                             dtype=object)
         rng.shuffle(permuted_sent)
 
-        permuted_sent = (self.full_stop + " ").join(permuted_sent).rstrip() + self.full_stop
+        for i in range(0, len(permuted_sent)):
+            sent = permuted_sent[i]
+            sent = np.array(sent.split(" "), dtype=object)
+            self.span_masking(sent, seed)
+            permuted_sent[i] = " ".join(filter(None, sent)).rstrip()
+            if i < len(permuted_sent) - 1:
+                permuted_sent[i] += self.eos_sep
 
-        words: np.ndarray = np.array(permuted_sent.split(" "), dtype=np.str)
+        # permuted_sent = (self.eos_sep + " ").join(permuted_sent).rstrip() + self.eos_sep
 
-        # sentence += " " + self.eos_sep + " " + self.lang
+        # words: np.ndarray = np.array(permuted_sent.split(" "), dtype=np.str)
 
-        self.span_masking(words, seed)
-
-        masked_words = " ".join(filter(None, words))  # + " " + self.eos_sep + " " + self.lang
+        masked_words = " ".join(filter(None, permuted_sent))  # + " " + self.eos_sep + " " + self.lang
         return sentence, masked_words
 
     def span_masking(self, words: np.ndarray, seed: int):
@@ -69,7 +45,7 @@ class MBartNoiseFunction:
             mask_span_len = rng.poisson(3.5)
             if mask_span_len > num_tokens_to_mask:
                 mask_span_len = num_tokens_to_mask
-            index = np.random.randint(m_end, tokens_length - num_tokens_to_mask)
+            index = rng.integers(m_end, tokens_length - num_tokens_to_mask, dtype=int)
             m_end = mask_span_len + index
 
             words[index] = self.mask_token
@@ -95,3 +71,7 @@ class MBartNoiseFunction:
                 indexes.append(i + 1)
             i = i + 1
         return indexes
+
+
+if __name__ == '__main__':
+    MBartNoiseFunction().compute("Hello man.</s> How are you?</s> Fine.</s>")

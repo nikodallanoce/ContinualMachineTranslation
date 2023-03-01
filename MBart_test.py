@@ -6,31 +6,34 @@ from transformers import MBartTokenizer, MBartConfig, MBartForConditionalGenerat
 from MBart import MBart
 from MBartDataset import MBartDataset
 
+def model_size(model):
+    param_size = 0
+    for param in model.parameters():
+        param_size += param.nelement() * param.element_size()
+    buffer_size = 0
+    for buffer in model.buffers():
+        buffer_size += buffer.nelement() * buffer.element_size()
+
+    size_all_mb = (param_size + buffer_size) / 1024 ** 2
+    return size_all_mb
+
 if __name__ == '__main__':
-
-    model = MBartForConditionalGeneration.from_pretrained("facebook/mbart-large-50", "/data/n.dallanoce/mbart-large-50")
-
-    cc_en_de = load_dataset("yhavinga/ccmatrix", "en-de", split='train', cache_dir="/data/n.dallanoce/cc_en_de",
-                            ignore_verifications=True)
-
     tok_en = MBartTokenizer.from_pretrained("facebook/mbart-large-cc25", src_lang="en_XX")
-    tok_de = MBartTokenizer.from_pretrained("facebook/mbart-large-cc25", src_lang="de_DE")
-    tok_es = MBartTokenizer.from_pretrained("facebook/mbart-large-cc25", src_lang="es_XX")
-    tok_fr = MBartTokenizer.from_pretrained("facebook/mbart-large-cc25", src_lang="fr_XX")
 
-    data_en = MBartDataset(cc_en_de, tok_en, "en")
-    data_de = MBartDataset(cc_en_de, tok_de, "de")
-
-    load_en = DataLoader(data_en, batch_size=8, drop_last=True, shuffle=True, pin_memory=True, num_workers=16)
+    # translation_ds = MBartPreTrainingDataset(translation_ds, tok_en, "en")
 
     mbart_config = MBartConfig(encoder_layers=6, decoder_layers=6,
                                encoder_ffn_dim=2048, decoder_ffn_dim=2048,
                                encoder_attention_heads=8, decoder_attention_heads=8,
-                               d_model=512, max_length=256, vocab_size=tok_en.vocab_size)
+                               d_model=512, max_length=128, vocab_size=tok_en.vocab_size)
 
-    model: MBart = MBart(mbart_config, device_ids=[3])
+    # accelerator = Accelerator(mixed_precision='fp16', gradient_accumulation_steps=1)
+    # model: MBart = MBart(mbart_config, device_ids=[3])
+    cuda_dev = "cpu"
+    # model = model.to(cuda_dev)
+    model = MBartForConditionalGeneration(mbart_config).to(cuda_dev)
+    model.train(False)
+    print(model_size(model))
 
-    e = next(iter(load_en))
-    print()
-
-    model.fit(load_en, Adam(model.parameters()), steps=1)
+    model_size_trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    print("Transformer-base, number of trainable parameters: {0}".format(model_size_trainable))

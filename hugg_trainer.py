@@ -1,27 +1,22 @@
-import transformers
 from datasets import load_dataset
-from torch.optim import Adam
-from transformers import Trainer, Seq2SeqTrainer, Seq2SeqTrainingArguments, MBartTokenizer, MBartConfig, \
-    MBartForConditionalGeneration, get_scheduler
-from transformers.integrations import TensorBoardCallback
-import torch
+from transformers import Seq2SeqTrainingArguments, MBartTokenizer, MBartConfig, \
+    MBartForConditionalGeneration
 
-from CustomCallback import CustomCallback
 from CustomTrainer import CustomTrainer
-from MBart import MBart
-from MBartPreTrainingDataset import MBartPreTrainingDataset
+from custom_datasets.MBartPreTrainingDataset import MBartPreTrainingDataset
 
 if __name__ == '__main__':
     size = str(int(2 ** 24))
-    # pre_train_ds = load_dataset("text", data_files={"train": ["/data/n.dallanoce/cc100/en.txt"]},
-    #                             cache_dir="/data/n.dallanoce/cc100/hugg_en", split=f"train[{0}:{5000000}]",
-    #                             ignore_verifications=True)
-    # pre_train_ds = load_dataset("text", data_files={"train": ["test_hugg_en/test_data_hugg.txt"]},
+    pre_train_ds = load_dataset("cc100", lang="en",
+                                cache_dir="/data/n.dallanoce/cc100/hugg_en",
+                                split=f"train[{0}:{10000000}]",
+                                ignore_verifications=True)
+    # translation_ds = load_dataset("text", data_files={"train": ["test_hugg_en/test_data_hugg.txt"]},
     #                             cache_dir="test_hugg_en", split='train[:64]',
     #                             ignore_verifications=True)
-    pre_train_ds = load_dataset("g8a9/europarl_en-it",
-                                cache_dir="/data/n.dallanoce/europarl", split=f"train",
-                                ignore_verifications=True)
+    # translation_ds = load_dataset("g8a9/europarl_en-it",
+    #                             cache_dir="/data/n.dallanoce/europarl", split=f"train",
+    #                             ignore_verifications=True)
 
     tok_en = MBartTokenizer.from_pretrained("facebook/mbart-large-cc25", src_lang="en_XX")
 
@@ -32,13 +27,15 @@ if __name__ == '__main__':
     model: MBartForConditionalGeneration = MBartForConditionalGeneration(mbart_config)
     pre_train_ds = MBartPreTrainingDataset(pre_train_ds, tok_en, "en_XX")
 
-    training_args = Seq2SeqTrainingArguments("/home/n.dallanoce/PyCharm/pretraining/hugg_trainer/mbart_euro_new/",
+    training_args = Seq2SeqTrainingArguments("/home/n.dallanoce/PyCharm/pretraining/hugg_trainer/mbart_cc100/",
                                              overwrite_output_dir=True,
                                              label_names=['labels'],
                                              do_train=True,
-                                             per_device_train_batch_size=16,
+                                             auto_find_batch_size=True,
+                                             #per_device_train_batch_size=8,
+                                             gradient_accumulation_steps=1,
                                              num_train_epochs=1,
-                                             #max_steps=int(5e5),
+                                             max_steps=int(5e5),
                                              logging_steps=100,
                                              save_steps=300,
                                              log_level="info",
@@ -72,13 +69,13 @@ if __name__ == '__main__':
     #                                          greater_is_better=False,
     #                                          report_to=["tensorboard"]
     #                                          )
-    optimizer = Adam(model.parameters(), eps=1e-6, betas=(0.9, 0.98))
-    #optimizer = Adam(model.parameters())
-    #lr_scheduler = transformers.get_constant_schedule(optimizer)
+    # optimizer = Adam(model.parameters(), eps=1e-6, betas=(0.9, 0.98))
+    # optimizer = Adam(model.parameters())
+    # lr_scheduler = transformers.get_constant_schedule(optimizer)
     # lr_scheduler = get_scheduler("linear", optimizer=optimizer, num_training_steps=43740, num_warmup_steps=0)
-    lr_scheduler = get_scheduler("linear", optimizer=optimizer, num_training_steps=500000, num_warmup_steps=0)
+    # lr_scheduler = get_scheduler("linear", optimizer=optimizer, num_training_steps=500000, num_warmup_steps=0)
     trainer = CustomTrainer(model, training_args,
                             train_dataset=pre_train_ds,
-                            #optimizers=(optimizer, lr_scheduler)
+                            # optimizers=(optimizer, lr_scheduler)
                             )
     trainer.train(resume_from_checkpoint=False)
