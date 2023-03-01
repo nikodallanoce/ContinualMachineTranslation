@@ -3,7 +3,7 @@ from torch.optim import Adam
 from torch.utils.data import DataLoader
 from transformers import MBartTokenizer, MBartConfig, get_scheduler
 from accelerate import Accelerator
-from MBart import MBart
+from models.MBart import MBart
 from custom_datasets.MBartPreTrainingDataset import MBartPreTrainingDataset
 
 if __name__ == '__main__':

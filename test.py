@@ -4,7 +4,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 from transformers import MBartTokenizer, MBartConfig
 
-from MBart import MBart
+from models.MBart import MBart
 from noise_functions.MBartNoiseFunction import MBartNoiseFunction
 from custom_datasets.MBartPreTrainingDataset import MBartPreTrainingDataset
 
