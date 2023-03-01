@@ -3,6 +3,8 @@ from transformers import Seq2SeqTrainingArguments, MBartTokenizer, MBartConfig, 
     MBartForConditionalGeneration
 
 from CustomTrainer import CustomTrainer
+import sys
+sys.path.insert(0, '/home/n.dallanoce/PyCharm/pretraining')
 from custom_datasets.MBartPreTrainingDataset import MBartPreTrainingDataset
 
 if __name__ == '__main__':
@@ -27,12 +29,12 @@ if __name__ == '__main__':
     model: MBartForConditionalGeneration = MBartForConditionalGeneration(mbart_config)
     pre_train_ds = MBartPreTrainingDataset(pre_train_ds, tok_en, "en_XX")
 
-    training_args = Seq2SeqTrainingArguments("/home/n.dallanoce/PyCharm/pretraining/hugg_trainer/mbart_cc100/",
+    training_args = Seq2SeqTrainingArguments("/home/n.dallanoce/PyCharm/pretraining/weights/mbart_cc100/",
                                              overwrite_output_dir=True,
                                              label_names=['labels'],
                                              do_train=True,
-                                             auto_find_batch_size=True,
-                                             #per_device_train_batch_size=8,
+                                             #auto_find_batch_size=True,
+                                             per_device_train_batch_size=16,
                                              gradient_accumulation_steps=1,
                                              num_train_epochs=1,
                                              max_steps=int(5e5),

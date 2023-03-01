@@ -29,19 +29,24 @@ class MBartTranslationDataset(Dataset):
     def __getitem__(self, index):
         sent = self.hugg_dataset[index][self.ds_field]
         src, trg = sent[self.src_lang], sent[self.trg_lang]
-        outputs = self.tokenizer(src, text_target=trg, add_special_tokens=True, padding="max_length", truncation=True,
-                                 max_length=self.input_max_length, return_tensors='pt')
-        return outputs
+        outputs = self.tokenizer(src, text_target=trg, return_special_tokens_mask=False,
+                                 add_special_tokens=True, truncation=True,
+                                 max_length=self.input_max_length, padding='max_length',
+                                 return_tensors='pt')
+        # print()
+        return {'input_ids': outputs['input_ids'].view(-1), 'labels': outputs['labels'].view(-1),
+                'attention_mask': outputs['attention_mask'].view(-1)}
 
-
-if __name__ == '__main__':
-    translation_ds = load_dataset("wmt14", "fr-en",
-                                  cache_dir="C:\\Users\\dllni\\PycharmProjects\\pretraining\\wmt14",
-                                  split=f"train[0:1000]")
-
-    tok_en = MBartTokenizer.from_pretrained("facebook/mbart-large-cc25", src_lang="en_XX", tgt_lang="fr_XX")
-
-    translation_ds = MBartTranslationDataset(translation_ds, tok_en, "fr")
-
-    for e in DataLoader(translation_ds):
-        pass
+# if __name__ == '__main__':
+#     from tqdm import tqdm
+#
+#     translation_ds = load_dataset("wmt14", "fr-en",
+#                                   cache_dir="D:\\datasets\\wmt14",
+#                                   split=f"train")
+#
+#     tok_en = MBartTokenizer.from_pretrained("facebook/mbart-large-cc25", src_lang="en_XX", tgt_lang="fr_XX")
+#
+#     translation_ds = MBartTranslationDataset(translation_ds, tok_en, "fr")
+#
+#     for e in tqdm(DataLoader(translation_ds)):
+#         pass

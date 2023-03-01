@@ -4,6 +4,10 @@ from torch.utils.data import DataLoader
 from transformers import MBartTokenizer, MBartConfig, get_scheduler
 from accelerate import Accelerator
 from models.MBart import MBart
+
+import sys
+
+sys.path.insert(0, '../custom_datasets/')
 from custom_datasets.MBartPreTrainingDataset import MBartPreTrainingDataset
 
 if __name__ == '__main__':
@@ -20,20 +24,20 @@ if __name__ == '__main__':
                                d_model=512, max_length=256, vocab_size=tok_en.vocab_size)
 
     accelerator = Accelerator(mixed_precision='fp16', gradient_accumulation_steps=1)
-    model: MBart = MBart(mbart_config,  device_ids=[3])
+    model: MBart = MBart(mbart_config, device_ids=[3])
     optimizer = Adam(model.parameters(), eps=1e-6, betas=(0.98, 0.999))
-    #optimizer = Adam(model.parameters())
+    # optimizer = Adam(model.parameters())
     lr_scheduler = get_scheduler("linear", optimizer=optimizer, num_training_steps=5e5, num_warmup_steps=0)
 
     pre_train_load = DataLoader(pre_train_ds, batch_size=16, drop_last=True, shuffle=False, pin_memory=True,
                                 num_workers=2)
 
-    #model, optimizer, pre_train_load, lr_scheduler = accelerator.prepare(model, optimizer , pre_train_load, lr_scheduler)
-    #optimizer = accelerator.prepare_optimizer(optimizer, device_placement='cuda')
+    # model, optimizer, pre_train_load, lr_scheduler = accelerator.prepare(model, optimizer , pre_train_load, lr_scheduler)
+    # optimizer = accelerator.prepare_optimizer(optimizer, device_placement='cuda')
 
     model.fit(pre_train_load, optimizer, steps=500000, lr_scheduler=lr_scheduler)
 
     # model.fit(load_en, Adam(model.parameters()), epochs=1)
 
-    #for e in pre_train_load:
+    # for e in pre_train_load:
     #    print()
