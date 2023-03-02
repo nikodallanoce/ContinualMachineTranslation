@@ -1,6 +1,8 @@
 import random
 
 import datasets
+import torch
+from torch import Tensor
 from torch.utils.data import Dataset
 from transformers import PreTrainedTokenizer
 
@@ -26,21 +28,24 @@ class MT6PreTrainingDataset(Dataset):
             new_index = random.randint(0, self.hugg_dataset.num_rows - 1)
             label_ids = self.hugg_dataset[new_index]['text']
 
-        label_ids, targets = self.noise_fn.compute(label_ids, new_index)
-        # targets.append(label_ids)
-        input_ids = self.tokenizer(label_ids, return_special_tokens_mask=False,
+        label_ids, targets = self.noise_fn.compute(label_ids, new_index, return_list=True)
+        input_tok = self.tokenizer(label_ids, return_special_tokens_mask=False,
                                    add_special_tokens=True, truncation=True,
                                    max_length=self.input_max_length, padding='max_length',
-                                   return_tensors='pt')['input_ids']
-        targets = self.tokenizer(targets, return_special_tokens_mask=False,
-                                 add_special_tokens=True, truncation=True,
-                                 max_length=self.input_max_length, padding='max_length',
-                                 return_tensors='pt')['input_ids']
+                                   return_tensors='pt')
+        while len(targets) < 3:
+            targets.append("")
 
-        #zeros = torch.zeros_like(input_ids)
-        #targets = targets.view(1, -1)
-        #zeros[:, :targets.shape[1]] = targets
-        #targets = zeros
-        outputs = {"input_ids": input_ids, "labels": targets}
+        out_tok = self.tokenizer(targets, return_special_tokens_mask=False,
+                                 add_special_tokens=True, truncation=True,
+                                 max_length=self.input_max_length//len(targets), padding='max_length',
+                                 return_tensors='pt', return_attention_mask=False, return_token_type_ids=False)
+
+        input_ids: Tensor = input_tok['input_ids'].view(-1)
+        att_mask: Tensor = input_tok['attention_mask'].view(-1)
+        labels: Tensor = out_tok['input_ids']
+        labels: Tensor = torch.where(labels == 0, -100, labels)
+
+        outputs = {"input_ids": input_ids, "labels": labels, "attention_mask": att_mask}
 
         return outputs
