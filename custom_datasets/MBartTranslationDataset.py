@@ -9,7 +9,6 @@ from torch.utils.data.dataset import T_co
 from transformers import PreTrainedTokenizer, MBartTokenizer
 import datasets
 
-
 class MBartTranslationDataset(Dataset):
 
     def __init__(self, hugg_dataset: datasets.Dataset, tokenizer: MBartTokenizer, trg_lang: str,
@@ -33,20 +32,21 @@ class MBartTranslationDataset(Dataset):
                                  add_special_tokens=True, truncation=True,
                                  max_length=self.input_max_length, padding='max_length',
                                  return_tensors='pt')
-        # print()
-        return {'input_ids': outputs['input_ids'].view(-1), 'labels': outputs['labels'].view(-1),
+        labels = outputs['labels'].view(-1)
+        labels = torch.where(labels == 1, -100, labels)
+        return {'input_ids': outputs['input_ids'].view(-1), 'labels': labels,
                 'attention_mask': outputs['attention_mask'].view(-1)}
 
-# if __name__ == '__main__':
-#     from tqdm import tqdm
-#
-#     translation_ds = load_dataset("wmt14", "fr-en",
-#                                   cache_dir="D:\\datasets\\wmt14",
-#                                   split=f"train")
-#
-#     tok_en = MBartTokenizer.from_pretrained("facebook/mbart-large-cc25", src_lang="en_XX", tgt_lang="fr_XX")
-#
-#     translation_ds = MBartTranslationDataset(translation_ds, tok_en, "fr")
-#
-#     for e in tqdm(DataLoader(translation_ds)):
-#         pass
+    # if __name__ == '__main__':
+    #     from tqdm import tqdm
+    #
+    #     translation_ds = load_dataset("wmt14", "fr-en",
+    #                                   cache_dir="D:\\datasets\\wmt14",
+    #                                   split=f"train")
+    #
+    #     tok_en = MBartTokenizer.from_pretrained("facebook/mbart-large-cc25", src_lang="en_XX", tgt_lang="fr_XX")
+    #
+    #     translation_ds = MBartTranslationDataset(translation_ds, tok_en, "fr")
+    #
+    #     for e in tqdm(DataLoader(translation_ds)):
+    #         pass

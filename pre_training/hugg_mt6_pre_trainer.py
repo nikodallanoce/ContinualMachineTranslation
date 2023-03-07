@@ -12,17 +12,21 @@ from custom_datasets.MBartPreTrainingDataset import MBartPreTrainingDataset
 
 import os
 
+#os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"  # see issue #152
+#os.environ["CUDA_VISIBLE_DEVICES"] = "3"
+os.environ["NEPTUNE_API_TOKEN"] = "eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiJjMmU0YTFmMy1lMDNlLTRiY2EtOTliMy02M2E3OTg4NWUzNjkifQ=="
+os.environ["NEPTUNE_PROJECT"] = "nikodallanoce/mt6"
 
 def run_local():
     pre_train_ds = load_dataset("text", data_files={"train": ["D:\\datasets\\test_hugg_en\\test_data_hugg.txt"]},
-                                cache_dir="D:\\datasets\\test_hugg_en", split=f'train[0:128]',
+                                cache_dir="D:\\datasets\\test_hugg_en", split=f'train[0:1024]',
                                 ignore_verifications=True)
     training_args = Seq2SeqTrainingArguments("D:\\trainer\\mt6",
                                              overwrite_output_dir=True,
                                              label_names=['labels'],
                                              do_train=True,
                                              # auto_find_batch_size=True,
-                                             per_device_train_batch_size=1,
+                                             per_device_train_batch_size=2,
                                              gradient_accumulation_steps=4,
                                              num_train_epochs=10,
                                              # max_steps=int(5e5),
@@ -38,7 +42,7 @@ def run_local():
                                              save_total_limit=2,
                                              metric_for_best_model="loss",
                                              greater_is_better=False,
-                                             report_to=["tensorboard"]
+                                             report_to=["tensorboard", "neptune"]
                                              )
     return pre_train_ds, training_args
 
@@ -65,8 +69,6 @@ def run_server():
                                              greater_is_better=False,
                                              report_to=["tensorboard"]
                                              )
-    os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"  # see issue #152
-    os.environ["CUDA_VISIBLE_DEVICES"] = "3"
     pre_train_ds = load_dataset("cc100", lang="en",
                                 cache_dir="/data/n.dallanoce/cc100/hugg_en",
                                 split=f"train[{0}:{1024}]",
