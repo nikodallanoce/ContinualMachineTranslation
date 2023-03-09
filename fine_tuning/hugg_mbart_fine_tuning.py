@@ -4,11 +4,13 @@ from transformers import Seq2SeqTrainingArguments, MBartTokenizer, MBartConfig, 
     MBartForConditionalGeneration, Seq2SeqTrainer
 import sys
 
+from trainers.MBartTrainer import MBartTrainer
+
 sys.path.insert(0, '/home/n.dallanoce/PyCharm/pretraining')
 from custom_datasets.MBartTranslationDataset import MBartTranslationDataset
 import os
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"  # see issue #152
-#os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 if __name__ == '__main__':
     size = str(int(2 ** 24))
     # translation_ds = load_dataset("wmt14", "fr-en",
@@ -19,14 +21,14 @@ if __name__ == '__main__':
     #                               cache_dir="D:\\datasets\\wmt14",
     #                               split=f"train[0:2048]",
     #                               ignore_verifications=True)
-    translation_ds = load_dataset("yhavinga/ccmatrix", "en-fr",
-                                  cache_dir="/data/n.dallanoce/cc_en_fr",
-                                  split=f"train[0:20000000]",
-                                  ignore_verifications=True)
+    # translation_ds = load_dataset("yhavinga/ccmatrix", "en-fr",
+    #                               cache_dir="/data/n.dallanoce/cc_en_fr",
+    #                               split=f"train[0:20000000]",
+    #                               ignore_verifications=True)
 
     tok_en = MBartTokenizer.from_pretrained("facebook/mbart-large-cc25", src_lang="en_XX", tgt_lang="fr_XX")
 
-    translation_ds = MBartTranslationDataset(translation_ds, tok_en, "fr")
+    #translation_ds = MBartTranslationDataset(translation_ds, tok_en, "fr")
 
     mbart_config = MBartConfig(encoder_layers=6, decoder_layers=6,
                                encoder_ffn_dim=2048, decoder_ffn_dim=2048,
@@ -38,11 +40,11 @@ if __name__ == '__main__':
         torch.load(
             "/home/n.dallanoce/PyCharm/pretraining/weights/mbart_cc100/checkpoint-499800/pytorch_model.bin",
             map_location='cuda:0'))
-    training_args = Seq2SeqTrainingArguments("/home/n.dallanoce/PyCharm/pretraining/weights/mbart_ft_fr-en_cc_ls/",
+    training_args = Seq2SeqTrainingArguments("/home/n.dallanoce/PyCharm/pretraining/weights/mbart_prova/",
                                              overwrite_output_dir=True,
                                              label_names=['labels'],
                                              do_train=True,
-                                             label_smoothing_factor=0.1,
+                                             label_smoothing_factor=0.0,
                                              warmup_steps=2500,
                                              optim="adamw_torch",
                                              #learning_rate=3e-5,
@@ -69,12 +71,12 @@ if __name__ == '__main__':
     #                                          overwrite_output_dir=True,
     #                                          label_names=['labels'],
     #                                          do_train=True,
-    #                                          label_smoothing_factor=0.2,
+    #                                          label_smoothing_factor=0,
     #                                          warmup_steps=2500,
     #                                          optim="adamw_torch",
     #                                          learning_rate=3e-5,
     #                                          #auto_find_batch_size=True,
-    #                                          per_device_train_batch_size=4,
+    #                                          per_device_train_batch_size=2,
     #                                          gradient_accumulation_steps=1,
     #                                          num_train_epochs=40,
     #                                          #max_steps=int(5e5),
@@ -85,7 +87,7 @@ if __name__ == '__main__':
     #                                          fp16=True,
     #                                          dataloader_drop_last=True,
     #                                          dataloader_pin_memory=True,
-    #                                          dataloader_num_workers=8,
+    #                                          dataloader_num_workers=1,
     #                                          # prediction_loss_only=True,
     #                                          save_total_limit=2,
     #                                          metric_for_best_model="loss",
@@ -97,8 +99,8 @@ if __name__ == '__main__':
     # lr_scheduler = transformers.get_constant_schedule(optimizer)
     # lr_scheduler = get_scheduler("linear", optimizer=optimizer, num_training_steps=43740, num_warmup_steps=0)
     # lr_scheduler = get_scheduler("linear", optimizer=optimizer, num_training_steps=500000, num_warmup_steps=0)
-    trainer = Seq2SeqTrainer(model, training_args,
-                             train_dataset=translation_ds,
+    trainer = MBartTrainer(model, training_args,
+                             #train_dataset=translation_ds,
                              # optimizers=(optimizer, lr_scheduler)
                              )
     trainer.train(resume_from_checkpoint=False)
