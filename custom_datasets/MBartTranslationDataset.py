@@ -25,12 +25,24 @@ class MBartTranslationDataset(Dataset):
     def __len__(self):
         return len(self.hugg_dataset)
 
+    # def __getitem__(self, index):
+    #     sent = self.hugg_dataset[index][self.ds_field]
+    #     src, trg = sent[self.src_lang], sent[self.trg_lang]
+    #     outputs = self.tokenizer(src, text_target=trg, return_special_tokens_mask=False,
+    #                              add_special_tokens=True, truncation=True,
+    #                              max_length=self.input_max_length, padding='max_length',
+    #                              return_tensors='pt')
+    #     labels = outputs['labels'].view(-1)
+    #     labels = torch.where(labels == 1, -100, labels)
+    #     return {'input_ids': outputs['input_ids'].view(-1), 'labels': labels,
+    #             'attention_mask': outputs['attention_mask'].view(-1)}
+
     def __getitem__(self, index):
         sent = self.hugg_dataset[index][self.ds_field]
         src, trg = sent[self.src_lang], sent[self.trg_lang]
         outputs = self.tokenizer(src, text_target=trg, return_special_tokens_mask=False,
                                  add_special_tokens=True, truncation=True,
-                                 max_length=self.input_max_length, padding='max_length',
+                                 max_length=self.input_max_length,
                                  return_tensors='pt')
         labels = outputs['labels'].view(-1)
         labels = torch.where(labels == 1, -100, labels)

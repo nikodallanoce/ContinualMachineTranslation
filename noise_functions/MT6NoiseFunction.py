@@ -6,7 +6,7 @@ import numpy as np
 
 class MT6NoiseFunction:
 
-    def compute(self, text: str, seed: int, n_groups: int = 3, noise_density: int = 0.5, return_list=False) -> Tuple[
+    def compute(self, text: str, seed: int, n_groups: int = 3, noise_density: float = 0.5, return_list=False) -> Tuple[
         str, Union[List[str], str]]:
 
         src_tokens: List[str] = list(filter(None, text.split(" ")))
@@ -31,9 +31,18 @@ class MT6NoiseFunction:
                 sent = token
                 counter = 0
                 span_reminder -= 1
+
         if not return_list:
             targets = " ".join(targets)
         return " ".join(filter(None, src_tokens)), targets
+
+    def compute_for_mt5(self, text: str, seed: int, noise_density: float = 0.15) -> Tuple[
+        str, str]:
+
+        src_tokens: List[str] = list(filter(None, text.split(" ")))
+        trg_tokens, n_span = self.mask_src_trg(noise_density, seed, src_tokens)
+        return " ".join(filter(None, src_tokens)), " ".join(filter(None, trg_tokens))
+
 
     def mask_src_trg(self, noise_density: float, seed: int, src_tokens: List[str]) -> Tuple[List[str], int]:
         rng = np.random.default_rng(seed)
@@ -77,7 +86,7 @@ class MaskTokenGenerator:
 
 if __name__ == '__main__':
     tok_en = MT5Tokenizer.from_pretrained("google/mt5-base")
-    src, trg = MT6NoiseFunction().compute(
+    src, trg = MT6NoiseFunction().compute_for_mt5(
         "We introduce how to convert the following three types of the language understanding task into the text-to-text format.",
         seed=0)
     tokenized = tok_en(trg, add_special_tokens=True, max_length=16, padding="max_length", truncation=True)

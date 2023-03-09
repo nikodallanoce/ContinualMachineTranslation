@@ -22,30 +22,54 @@ class MT6PreTrainingDataset(Dataset):
         return len(self.hugg_dataset)
 
     def __getitem__(self, index):
-        label_ids = self.hugg_dataset[index]['text']
+        text = self.hugg_dataset[index]['text']
         new_index = index
-        while len(label_ids) < 5:
+
+        while len(text) < 5:
             new_index = random.randint(0, self.hugg_dataset.num_rows - 1)
-            label_ids = self.hugg_dataset[new_index]['text']
+            text = self.hugg_dataset[new_index]['text']
 
-        label_ids, targets = self.noise_fn.compute(label_ids, new_index, return_list=True)
-        input_tok = self.tokenizer(label_ids, return_special_tokens_mask=False,
+        source, target = self.noise_fn.compute_for_mt5(text, new_index)
+        tokenized = self.tokenizer(source, text_target=target, return_special_tokens_mask=False,
                                    add_special_tokens=True, truncation=True,
-                                   max_length=self.input_max_length, padding='max_length',
+                                   max_length=self.input_max_length, #padding='max_length',
                                    return_tensors='pt')
-        while len(targets) < 3:
-            targets.append("")
 
-        out_tok = self.tokenizer(targets, return_special_tokens_mask=False,
-                                 add_special_tokens=True, truncation=True,
-                                 max_length=self.input_max_length//len(targets), padding='max_length',
-                                 return_tensors='pt', return_attention_mask=False, return_token_type_ids=False)
-
-        input_ids: Tensor = input_tok['input_ids'].view(-1)
-        att_mask: Tensor = input_tok['attention_mask'].view(-1)
-        labels: Tensor = out_tok['input_ids']
+        input_ids: Tensor = tokenized['input_ids'].view(-1)
+        att_mask: Tensor = tokenized['attention_mask'].view(-1)
+        labels: Tensor = tokenized['labels'].view(-1)
         labels: Tensor = torch.where(labels == 0, -100, labels)
 
         outputs = {"input_ids": input_ids, "labels": labels, "attention_mask": att_mask}
 
         return outputs
+
+    # def __getitem__(self, index):
+    #     text = self.hugg_dataset[index]['text']
+    #     new_index = index
+    #     label_ids, targets = self.noise_fn.compute(text, new_index, return_list=True, noise_density=0.3)
+    #     while len(targets) < 3: #only if return_list = True
+    #         new_index = random.randint(0, self.hugg_dataset.num_rows - 1)
+    #         text = self.hugg_dataset[new_index]['text']
+    #         label_ids, targets = self.noise_fn.compute(text, new_index, return_list=True, noise_density=0.3)
+    #
+    #     input_tok = self.tokenizer(label_ids, return_special_tokens_mask=False,
+    #                                add_special_tokens=True, truncation=True,
+    #                                max_length=self.input_max_length, padding='max_length',
+    #                                return_tensors='pt')
+    #     # while len(targets) < 3:
+    #     #     targets.append("")
+    #
+    #     out_tok = self.tokenizer(targets, return_special_tokens_mask=False,
+    #                              add_special_tokens=True, truncation=True,
+    #                              max_length=self.input_max_length // len(targets), padding='max_length',
+    #                              return_tensors='pt', return_attention_mask=False, return_token_type_ids=False)
+    #
+    #     input_ids: Tensor = input_tok['input_ids'].view(-1)
+    #     att_mask: Tensor = input_tok['attention_mask'].view(-1)
+    #     labels: Tensor = out_tok['input_ids']
+    #     labels: Tensor = torch.where(labels == 0, -100, labels)
+    #
+    #     outputs = {"input_ids": input_ids, "labels": labels, "attention_mask": att_mask}
+    #
+    #     return outputs

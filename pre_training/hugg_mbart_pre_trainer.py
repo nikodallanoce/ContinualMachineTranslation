@@ -2,7 +2,7 @@ from datasets import load_dataset
 from transformers import Seq2SeqTrainingArguments, MBartTokenizer, MBartConfig, \
     MBartForConditionalGeneration
 
-from CustomTrainer import CustomTrainer
+from trainers.MBartTrainer import MBartTrainer
 import sys
 sys.path.insert(0, '/home/n.dallanoce/PyCharm/pretraining')
 from custom_datasets.MBartPreTrainingDataset import MBartPreTrainingDataset
@@ -28,6 +28,7 @@ if __name__ == '__main__':
                                d_model=512, max_length=128, vocab_size=tok_en.vocab_size)
     model: MBartForConditionalGeneration = MBartForConditionalGeneration(mbart_config)
     pre_train_ds = MBartPreTrainingDataset(pre_train_ds, tok_en, "en_XX")
+
 
     # training_args = Seq2SeqTrainingArguments("/home/n.dallanoce/PyCharm/pretraining/weights/mbart_cc100/",
     #                                          overwrite_output_dir=True,
@@ -76,8 +77,8 @@ if __name__ == '__main__':
     # lr_scheduler = transformers.get_constant_schedule(optimizer)
     # lr_scheduler = get_scheduler("linear", optimizer=optimizer, num_training_steps=43740, num_warmup_steps=0)
     # lr_scheduler = get_scheduler("linear", optimizer=optimizer, num_training_steps=500000, num_warmup_steps=0)
-    trainer = CustomTrainer(model, training_args,
-                            train_dataset=pre_train_ds,
-                            # optimizers=(optimizer, lr_scheduler)
-                            )
+    trainer = MBartTrainer(model, training_args,
+                           train_dataset=pre_train_ds,
+                           # optimizers=(optimizer, lr_scheduler)
+                           )
     trainer.train(resume_from_checkpoint=False)
