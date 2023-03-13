@@ -2,10 +2,10 @@ from datasets import load_dataset
 from transformers import Seq2SeqTrainingArguments, MBartTokenizer, MBartConfig, \
     MBartForConditionalGeneration
 
-from trainers.MBartTrainer import MBartTrainer
 import sys
 sys.path.insert(0, '/home/n.dallanoce/PyCharm/pretraining')
 from custom_datasets.MBartPreTrainingDataset import MBartPreTrainingDataset
+from trainers.MBartTrainer import MBartTrainer
 
 if __name__ == '__main__':
     size = str(int(2 ** 24))

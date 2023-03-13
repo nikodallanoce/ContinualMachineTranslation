@@ -4,13 +4,12 @@ from transformers import Seq2SeqTrainingArguments, MBartTokenizer, MBartConfig, 
     MBartForConditionalGeneration, Seq2SeqTrainer
 import sys
 
-from trainers.MBartTrainer import MBartTrainer
-
 sys.path.insert(0, '/home/n.dallanoce/PyCharm/pretraining')
 from custom_datasets.MBartTranslationDataset import MBartTranslationDataset
+from trainers.MBartTrainer import MBartTrainer
 import os
-os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"  # see issue #152
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+#os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"  # see issue #152
+#os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 if __name__ == '__main__':
     size = str(int(2 ** 24))
     # translation_ds = load_dataset("wmt14", "fr-en",
@@ -33,23 +32,23 @@ if __name__ == '__main__':
     mbart_config = MBartConfig(encoder_layers=6, decoder_layers=6,
                                encoder_ffn_dim=2048, decoder_ffn_dim=2048,
                                encoder_attention_heads=8, decoder_attention_heads=8,
-                               d_model=512, max_length=128, vocab_size=tok_en.vocab_size, dropout=0.3)
+                               d_model=512, max_length=128, vocab_size=tok_en.vocab_size, dropout=0.2)
     model: MBartForConditionalGeneration = MBartForConditionalGeneration(mbart_config)
 
     model.load_state_dict(
         torch.load(
             "/home/n.dallanoce/PyCharm/pretraining/weights/mbart_cc100/checkpoint-499800/pytorch_model.bin",
             map_location='cuda:0'))
-    training_args = Seq2SeqTrainingArguments("/home/n.dallanoce/PyCharm/pretraining/weights/mbart_prova/",
+    training_args = Seq2SeqTrainingArguments("/home/n.dallanoce/PyCharm/pretraining/weights/mbart_ft_fr-en_cc_2/",
                                              overwrite_output_dir=True,
                                              label_names=['labels'],
                                              do_train=True,
-                                             label_smoothing_factor=0.0,
-                                             warmup_steps=2500,
+                                             label_smoothing_factor=0,
+                                             #warmup_steps=2500,
                                              optim="adamw_torch",
                                              #learning_rate=3e-5,
                                              #auto_find_batch_size=True,
-                                             per_device_train_batch_size=16,
+                                             per_device_train_batch_size=32,
                                              gradient_accumulation_steps=1,
                                              #num_train_epochs=60,
                                              max_steps=int(5e5),
@@ -60,7 +59,7 @@ if __name__ == '__main__':
                                              fp16=True,
                                              dataloader_drop_last=True,
                                              dataloader_pin_memory=True,
-                                             dataloader_num_workers=4,
+                                             dataloader_num_workers=8,
                                              # prediction_loss_only=True,
                                              save_total_limit=1,
                                              metric_for_best_model="loss",
@@ -71,7 +70,7 @@ if __name__ == '__main__':
     #                                          overwrite_output_dir=True,
     #                                          label_names=['labels'],
     #                                          do_train=True,
-    #                                          label_smoothing_factor=0,
+    #                                          label_smoothing_factor=0.1,
     #                                          warmup_steps=2500,
     #                                          optim="adamw_torch",
     #                                          learning_rate=3e-5,

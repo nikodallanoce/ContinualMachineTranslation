@@ -29,7 +29,7 @@ class MT6PreTrainingDataset(Dataset):
             new_index = random.randint(0, self.hugg_dataset.num_rows - 1)
             text = self.hugg_dataset[new_index]['text']
 
-        source, target = self.noise_fn.compute_for_mt5(text, new_index)
+        source, target = self.noise_fn.compute_for_mt5(text, new_index, noise_density=0.5)
         tokenized = self.tokenizer(source, text_target=target, return_special_tokens_mask=False,
                                    add_special_tokens=True, truncation=True,
                                    max_length=self.input_max_length, #padding='max_length',

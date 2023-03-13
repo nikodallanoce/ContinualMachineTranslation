@@ -7,12 +7,12 @@ import numpy as np
 class MBartNoiseFunction:
 
     def __init__(self, mask_percentage: float = 0.35, eos_sep: str = "</s>", mask_token: str = "<mask>",
-                 lang: str = "en_XX"):
+                 lang: str = "en_XX", poisson_span_len: float = 3.5):
         self.mask_percentage: float = mask_percentage
         self.eos_sep: str = eos_sep
         self.mask_token: str = mask_token
         self.lang = lang
-        self.full_stop = "."
+        self.poisson_span_len = poisson_span_len
 
     def compute(self, sentence: str, seed: int = 0) -> Tuple[str, str]:
         sentence = sentence.strip()
@@ -34,6 +34,10 @@ class MBartNoiseFunction:
         # words: np.ndarray = np.array(permuted_sent.split(" "), dtype=np.str)
 
         masked_words = " ".join(filter(None, permuted_sent))  # + " " + self.eos_sep + " " + self.lang
+        # lst = masked_words.split()
+        # masked_w = lst.count("<mask>")
+        # new_len = len(lst) - masked_w
+        # mask_prc = 1 - (new_len / len(sentence.split()))
         return sentence, masked_words
 
     def span_masking(self, words: np.ndarray, seed: int):
@@ -41,17 +45,22 @@ class MBartNoiseFunction:
         num_tokens_to_mask = round(tokens_length * self.mask_percentage)
         rng = np.random.default_rng(seed)
         m_end = 0
-        while num_tokens_to_mask > 0 and m_end < (tokens_length - num_tokens_to_mask):
-            mask_span_len = rng.poisson(3.5)
+        while num_tokens_to_mask > 0:
+            mask_span_len = rng.poisson(self.poisson_span_len)
             if mask_span_len > num_tokens_to_mask:
                 mask_span_len = num_tokens_to_mask
             index = rng.integers(m_end, tokens_length - num_tokens_to_mask, dtype=int)
-            m_end = mask_span_len + index
 
-            words[index] = self.mask_token
+            if index != m_end or index == 0:
+                words[index] = self.mask_token
+            else:
+                words[index] = ""
+
+            m_end = mask_span_len + index
             words[index + 1:m_end] = ""
 
-            m_end = m_end + 1
+            # m_end = m_end + 1
+            # num_tokens_to_mask -= 1
             num_tokens_to_mask = num_tokens_to_mask - mask_span_len
 
     def insert_eos(self, words: np.ndarray, indexes_of_eos: List[int]) -> List[str]:
@@ -74,4 +83,6 @@ class MBartNoiseFunction:
 
 
 if __name__ == '__main__':
-    MBartNoiseFunction().compute("Hello man.</s> How are you?</s> Fine.</s>")
+    MBartNoiseFunction(0.35).compute(
+        "As additional baselines, we will also include a comparison.</s> With a model randomly initialized without pre-training.</s> Process finished with exit code -1",
+        6)

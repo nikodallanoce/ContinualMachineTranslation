@@ -1,4 +1,6 @@
+import torch
 from datasets import load_dataset
+from torch.nn.functional import pad
 from torch.optim import Adam
 from torch.utils.data import DataLoader
 from tqdm import tqdm
@@ -17,7 +19,7 @@ def testing():
 
 def train():
     model: MBart = MBart(mbart_config, device_ids=[3])
-    #model.load_state_dict(torch.load("mbart_v2_test.pt"))
+    # model.load_state_dict(torch.load("mbart_v2_test.pt"))
     # optimizer = Adam(model.parameters(), eps=1e-6:, betas=(0.98, 0.999))
     optimizer = Adam(model.parameters())
     # lr_scheduler = get_scheduler("linear", optimizer=optimizer, num_training_steps=5e5, num_warmup_steps=0)
@@ -26,11 +28,38 @@ def train():
     model.fit_epoch(pre_train_load, optimizer, epochs=50)
 
 
-if __name__ == '__main__':
+def shift_tokens_right(input_ids: torch.Tensor, pad_token_id: int):
+    """
+    Shift input ids one token to the right, and wrap the last non pad token (the <LID> token) Note that MBart does not
+    have a single `decoder_start_token_id` in contrast to other Bart-like models.
+    """
+    prev_output_tokens = input_ids.clone()
 
-    noise_fn = MBartNoiseFunction()
-    #sent = "I must say that, while I won't recommend this novel to anyone, I think it was powerful. It felt to me like performance art, something I endured, an artistic experience which divides people but is undeniably compelling."
-    #noise_fn.compute(sent)
+    if pad_token_id is None:
+        raise ValueError("self.model.config.pad_token_id has to be defined.")
+    # replace possible -100 values in labels by `pad_token_id`
+    prev_output_tokens.masked_fill_(prev_output_tokens == -100, pad_token_id)
+
+    index_of_eos = (prev_output_tokens.ne(pad_token_id).sum(dim=1) - 1).unsqueeze(-1)
+    decoder_start_tokens = prev_output_tokens.gather(1, index_of_eos).squeeze()
+    prev_output_tokens[:, 1:] = prev_output_tokens[:, :-1].clone()
+    # prev_output_tokens[:, -1] = pad_token_id
+    prev_output_tokens[:, 0] = decoder_start_tokens
+    num_of_cols = prev_output_tokens.shape[-1]
+    for row, col_idx in enumerate(index_of_eos):
+        del_idx = int(col_idx) + 1
+        if del_idx < num_of_cols:
+            prev_output_tokens[row, del_idx] = pad_token_id
+
+    return prev_output_tokens
+
+
+if __name__ == '__main__':
+    tensor1 = torch.tensor([[5, 5, 7, 3, 2, 250004, 1], [5, 5, 7, 14, 2, 250004, 1]], dtype=torch.int32)
+    # padded_inp = pad(tensor1, pad=(0, 10, 0, 0), mode='constant', value=1)
+    ris = shift_tokens_right(tensor1, 1)
+    # sent = "I must say that, while I won't recommend this novel to anyone, I think it was powerful. It felt to me like performance art, something I endured, an artistic experience which divides people but is undeniably compelling."
+    # noise_fn.compute(sent)
 
     # translation_ds = load_dataset("text", data_files={"train": ["/data/n.dallanoce/cc100/en.txt"]},
     #                             cache_dir="/data/n.dallanoce/cc100/hugg_en", split=f"train[{300000}:{360000}]",
@@ -40,7 +69,7 @@ if __name__ == '__main__':
                                 cache_dir="test_hugg_en", split='train[:100%]',
                                 ignore_verifications=True)
 
-    #noise_fn.compute("Hello point. And she is. How is him? Sorry for that.")
+    # noise_fn.compute("Hello point. And she is. How is him? Sorry for that.")
 
     tok_en = MBartTokenizer.from_pretrained("facebook/mbart-large-cc25", src_lang="en_XX")
     t = tok_en("Hello sir... . I buy on amazon.com.")
@@ -53,4 +82,4 @@ if __name__ == '__main__':
                                encoder_attention_heads=8, decoder_attention_heads=8,
                                d_model=512, max_length=128, vocab_size=tok_en.vocab_size)
     testing()
-    #train()
+    # train()
