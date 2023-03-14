@@ -58,7 +58,7 @@ def calcolate_bleu(translation_ds):
 if __name__ == '__main__':
     # translation_ds = load_dataset("yhavinga/ccmatrix", "en-fr",
     #                               cache_dir="/data/n.dallanoce/cc_en_fr",
-    #                               split=f"train[25000000:25002048]",
+    #                               split=f"train[25000000:25003000]",
     #                               ignore_verifications=True)
 
     # to_translate, original = translation_ds[1]['translation']['en'], translation_ds[1]['translation']['fr']
