@@ -48,13 +48,13 @@ def run_local():
 
 
 def run_server():
-    training_args = Seq2SeqTrainingArguments("/home/n.dallanoce/PyCharm/pretraining/weights/mt6",
+    training_args = Seq2SeqTrainingArguments("/home/n.dallanoce/PyCharm/pretraining/weights/mt6_loss",
                                              overwrite_output_dir=True,
                                              label_names=['labels'],
                                              do_train=True,
                                              per_device_train_batch_size=8,
                                              gradient_accumulation_steps=1,
-                                             num_train_epochs=150,
+                                             num_train_epochs=100,
                                              optim="adamw_torch",
                                              learning_rate=1e-3,
                                              lr_scheduler_type="linear",
@@ -67,15 +67,18 @@ def run_server():
                                              dataloader_drop_last=True,
                                              dataloader_pin_memory=True,
                                              dataloader_num_workers=4,
+                                             #load_best_model_at_end=True,
                                              # prediction_loss_only=True,
                                              save_total_limit=1,
-                                             metric_for_best_model="loss",
+                                             #evaluation_strategy = "steps",
+                                             #eval_steps = 1600,
+                                             #metric_for_best_model="loss",
                                              greater_is_better=False,
                                              report_to=["tensorboard"]
                                              )
     pre_train_ds = load_dataset("cc100", lang="en",
                                 cache_dir="/data/n.dallanoce/cc100/hugg_en",
-                                split=f"train[{0}:{1024}]",
+                                split=f"train[{0}:{512}]",
                                 ignore_verifications=True)
     return training_args, pre_train_ds
 
@@ -91,7 +94,7 @@ if __name__ == '__main__':
     model = MT5ForConditionalGeneration(
         MT5Config(num_layers=6, d_model=256, d_ff=1024, num_heads=4, d_kv=256 // 4, vocab_size=len(tok_en)))
 
-    training_args, pre_train_ds = run_local()
+    training_args, pre_train_ds = run_server()
     # , decoder_start_token_id=tok_en.eos_token_id))
 
     # optimizer = Adam(model.parameters(), eps=1e-6, betas=(0.9, 0.98))

@@ -28,13 +28,14 @@ class MT6Trainer(Seq2SeqTrainer):
                          compute_metrics, callbacks, optimizers, preprocess_logits_for_metrics)
 
     def get_train_dataloader(self) -> DataLoader:
-        return DataLoader(self.train_dataset, collate_fn=partial(collate_pad, pad_token_id=self.model.config.pad_token_id),
+        return DataLoader(self.train_dataset,
+                          collate_fn=partial(collate_pad, pad_token_id=self.model.config.pad_token_id),
                           batch_size=self.args.per_device_train_batch_size,
                           drop_last=self.args.dataloader_drop_last,
                           num_workers=self.args.dataloader_num_workers,
                           pin_memory=self.args.dataloader_pin_memory)
 
-    def compute_loss(self, model, inputs, return_outputs=False):
+    def compute_loss_mt5(self, model, inputs, return_outputs=False):
         if "labels" in inputs and self.label_smoother is not None:
             inputs['decoder_input_ids'] = self.shift_right(inputs['labels'])
         return super().compute_loss(model, inputs, return_outputs)
@@ -75,17 +76,18 @@ class MT6Trainer(Seq2SeqTrainer):
     #         loss += super().training_step(model, inputs)
     #     return loss
 
-    # def compute_loss(self, model, inputs, return_outputs=False):
-    #     # input_ids = inputs["input_ids"]
-    #     targets = inputs["labels"]
-    #     # att_mask = inputs["attention_mask"]
-    #     loss: Tensor = 0
-    #     for i in range(targets.shape[1]):
-    #         groups: Tensor = targets[:, i, :]
-    #         labels: Tensor = groups.contiguous()
-    #         # decoder_input_ids = self.shift_tokens_right(labels, model.config.pad_token_id)
-    #         # if int(labels[:, 0]) == model.config.eos_token_id:
-    #         #     continue
-    #         inputs["labels"] = labels
-    #         loss += super().compute_loss(model, inputs, return_outputs)
-    #     return loss
+    def compute_loss(self, model, inputs, return_outputs=False):
+        # input_ids = inputs["input_ids"]
+        targets = inputs["labels"]
+        # att_mask = inputs["attention_mask"]
+        loss: Tensor = 0
+        for i in range(targets.shape[1]):
+            groups: Tensor = targets[:, i, :]
+            labels: Tensor = groups.contiguous()
+            # decoder_input_ids = self.shift_tokens_right(labels, model.config.pad_token_id)
+            # if int(labels[:, 0]) == model.config.eos_token_id:
+            #     continue
+            inputs["labels"] = labels
+            inputs["decoder_input_ids"] = self.shift_right(labels)
+            loss += super().compute_loss(model, inputs, return_outputs)
+        return loss

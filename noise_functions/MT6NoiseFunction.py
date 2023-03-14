@@ -43,7 +43,6 @@ class MT6NoiseFunction:
         trg_tokens, n_span = self.mask_src_trg(noise_density, seed, src_tokens)
         return " ".join(filter(None, src_tokens)), " ".join(filter(None, trg_tokens))
 
-
     def mask_src_trg(self, noise_density: float, seed: int, src_tokens: List[str]) -> Tuple[List[str], int]:
         rng = np.random.default_rng(seed)
         trg_tokens: List[str] = []
@@ -86,8 +85,13 @@ class MaskTokenGenerator:
 
 if __name__ == '__main__':
     tok_en = MT5Tokenizer.from_pretrained("google/mt5-base")
+    original = "We introduce how to convert the following three types of the language understanding task into the text-to-text format."
     src, trg = MT6NoiseFunction().compute_for_mt5(
-        "We introduce how to convert the following three types of the language understanding task into the text-to-text format.",
-        seed=0)
-    tokenized = tok_en(trg, add_special_tokens=True, max_length=16, padding="max_length", truncation=True)
+        original,
+        seed=1, noise_density=0.35)
+    # tokenized = tok_en(trg, add_special_tokens=True, max_length=16, padding="max_length", truncation=True)
+    lst = src.split()
+    masked_w = sum(1 for x in lst if "<extra_id" in x)
+    new_len = len(lst) - masked_w
+    mask_prc = 1 - (new_len / len(original.split()))
     print()

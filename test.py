@@ -56,7 +56,7 @@ def shift_tokens_right(input_ids: torch.Tensor, pad_token_id: int):
 
 if __name__ == '__main__':
     tensor1 = torch.tensor([[5, 5, 7, 3, 2, 250004, 1], [5, 5, 7, 14, 2, 250004, 1]], dtype=torch.int32)
-    # padded_inp = pad(tensor1, pad=(0, 10, 0, 0), mode='constant', value=1)
+    padded_inp = pad(tensor1, pad=(0, 10, 0, 0), mode='constant', value=1)
     ris = shift_tokens_right(tensor1, 1)
     # sent = "I must say that, while I won't recommend this novel to anyone, I think it was powerful. It felt to me like performance art, something I endured, an artistic experience which divides people but is undeniably compelling."
     # noise_fn.compute(sent)

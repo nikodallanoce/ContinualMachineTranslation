@@ -48,21 +48,7 @@ class MBartTrainer(Seq2SeqTrainer):
     #     return {"input_ids": padded_inp, "labels": padded_lab, "attention_mask": padded_att}
 
     def get_train_dataloader(self) -> DataLoader:
-        # dataset = load_dataset("wmt14", "fr-en",
-        #                        cache_dir="D:\\datasets\\wmt14",
-        #                        split=f"train[0:2048]",
-        #                        ignore_verifications=True)
-
-        dataset = load_dataset("yhavinga/ccmatrix", "en-fr",
-                               cache_dir="/data/n.dallanoce/cc_en_fr",
-                               split=f"train[0:20000000]",
-                               ignore_verifications=True)
-
-        tok_en = MBartTokenizer.from_pretrained("facebook/mbart-large-cc25", src_lang="en_XX", tgt_lang="fr_XX")
-
-        dataset = MBartTranslationDataset(dataset, tok_en, "fr", input_max_length=64)
-
-        return DataLoader(dataset, collate_fn=partial(collate_pad, pad_token_id=self.model.config.pad_token_id),
+        return DataLoader(self.train_dataset, collate_fn=partial(collate_pad, pad_token_id=self.model.config.pad_token_id),
                           batch_size=self.args.per_device_train_batch_size,
                           drop_last=self.args.dataloader_drop_last,
                           num_workers=self.args.dataloader_num_workers, pin_memory=self.args.dataloader_pin_memory)

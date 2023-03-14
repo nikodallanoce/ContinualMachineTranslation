@@ -66,7 +66,7 @@ if __name__ == '__main__':
     dev = "cuda:0"
     tok_en = MBartTokenizer.from_pretrained("facebook/mbart-large-cc25", src_lang="en_XX", tgt_lang="fr_XX")
     model: MBartForConditionalGeneration = MBartForConditionalGeneration.from_pretrained(
-        "/home/n.dallanoce/PyCharm/pretraining/weights/mbart_ft_fr-en_cc_2/checkpoint-320000").to(dev)
+        "/home/n.dallanoce/PyCharm/pretraining/weights/mbart_ft_fr-en_cc_2/checkpoint-500000").to(dev)
     # tok_en = MarianTokenizer.from_pretrained("Helsinki-NLP/opus-mt-en-fr")
     # model = MarianMTModel.from_pretrained("Helsinki-NLP/opus-mt-en-fr", cache_dir = "/home/n.dallanoce/huggingface/models").to(dev)
     # model.load_state_dict(

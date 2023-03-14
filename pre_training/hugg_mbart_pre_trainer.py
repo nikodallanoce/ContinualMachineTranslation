@@ -43,6 +43,7 @@ if __name__ == '__main__':
     #                                          save_steps=300,
     #                                          log_level="info",
     #                                          save_strategy="steps",
+    #                                          load_best_model_at_end= True
     #                                          fp16=True,
     #                                          dataloader_drop_last=True,
     #                                          dataloader_pin_memory=True,
