@@ -1,21 +1,24 @@
-import time
 from concurrent.futures import ThreadPoolExecutor, Future
 from typing import List, Dict
 from datasets import load_dataset
 from tqdm import tqdm
 
 
-def compute_collisions(dataset, i_s, thr):
+def compute_collisions(dataset: Dict[str, List[Dict[str, str]]],
+                        lang: str,
+                        i_s: int,
+                        pbar: tqdm):
     # dataset = dataset[i_s:i_e]
     collision_indexes: List[int] = []
     ds = dataset['translation']
     #eta = tqdm(ds, desc=f"{thr}")
     #eta.set_postfix(thread=thr)
     for i, translation in enumerate(ds):
-        sent = translation['en']
+        sent = translation[lang]
         if hash(sent) in string_hashes:
             if sent == string_hashes[hash(sent)]:
                 collision_indexes.append(i_s + i)
+        pbar.update(1)
     return collision_indexes
 
 
@@ -54,20 +57,21 @@ if __name__ == '__main__':
     #                         split=f"test",
     #                         ignore_verifications=True)
 
-    num_of_threads = 2**18
+    num_of_threads = 2**13
     # executor = ThreadPoolExecutor(num_of_threads)
     sent_per_thread, reminder = divmod(len(train_ds), num_of_threads)
 
     i_s, i_e = 0, sent_per_thread
     results: List[Future] = []
 
-    with ThreadPoolExecutor(num_of_threads) as executor:
-        for thr in tqdm(range(num_of_threads)):
-            results.append(executor.submit(compute_collisions, train_ds[i_s:i_e], i_s, thr))
-            i_s, i_e, reminder = start_end_indexes(i_s, i_e, reminder)
+    with tqdm(total=len(train_ds)) as pbar:
+        with ThreadPoolExecutor(num_of_threads) as executor:
+            for thr in tqdm(range(num_of_threads)):
+                results.append(executor.submit(compute_collisions, train_ds[i_s:i_e], "en", i_s, pbar))
+                i_s, i_e, reminder = start_end_indexes(i_s, i_e, reminder)
 
-        duplicates_idxs = []
-        for res in results:
-            duplicates_idxs.extend(res.result())
+            duplicates_idxs = []
+            for res in results:
+                duplicates_idxs.extend(res.result())
 
     print(len(duplicates_idxs))
