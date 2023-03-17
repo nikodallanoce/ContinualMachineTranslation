@@ -6,7 +6,7 @@ from datasets import load_dataset
 from torch import nn, Tensor
 from torch.nn.functional import pad
 from torch.nn.utils.rnn import pad_sequence
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, RandomSampler
 from transformers import PreTrainedModel, TrainingArguments, DataCollator, PreTrainedTokenizerBase, \
     EvalPrediction, TrainerCallback, Seq2SeqTrainer, MBartTokenizer
 
@@ -48,10 +48,12 @@ class MBartTrainer(Seq2SeqTrainer):
     #     return {"input_ids": padded_inp, "labels": padded_lab, "attention_mask": padded_att}
 
     def get_train_dataloader(self) -> DataLoader:
-        return DataLoader(self.train_dataset, collate_fn=partial(collate_pad, pad_token_id=self.model.config.pad_token_id),
+        return DataLoader(self.train_dataset,
+                          collate_fn=partial(collate_pad, pad_token_id=self.model.config.pad_token_id),
                           batch_size=self.args.per_device_train_batch_size,
                           drop_last=self.args.dataloader_drop_last,
-                          num_workers=self.args.dataloader_num_workers, pin_memory=self.args.dataloader_pin_memory)
+                          num_workers=self.args.dataloader_num_workers, pin_memory=self.args.dataloader_pin_memory,
+                          shuffle=True)
 
     def compute_loss(self, model, inputs, return_outputs=False):
         if "labels" in inputs:

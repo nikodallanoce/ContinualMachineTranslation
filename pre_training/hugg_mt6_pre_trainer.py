@@ -20,7 +20,7 @@ os.environ["NEPTUNE_PROJECT"] = "nikodallanoce/mt6"
 def run_local():
     pre_train_ds = load_dataset("text", data_files={"train": ["D:\\datasets\\test_hugg_en\\test_data_hugg.txt"]},
                                 cache_dir="D:\\datasets\\test_hugg_en", split=f'train[0:1024]',
-                                ignore_verifications=True)
+                                verification_mode='no_checks')
     training_args = Seq2SeqTrainingArguments("D:\\trainer\\mt6",
                                              overwrite_output_dir=True,
                                              label_names=['labels'],
@@ -67,19 +67,19 @@ def run_server():
                                              dataloader_drop_last=True,
                                              dataloader_pin_memory=True,
                                              dataloader_num_workers=4,
-                                             #load_best_model_at_end=True,
+                                             # load_best_model_at_end=True,
                                              # prediction_loss_only=True,
                                              save_total_limit=1,
-                                             #evaluation_strategy = "steps",
-                                             #eval_steps = 1600,
-                                             #metric_for_best_model="loss",
+                                             # evaluation_strategy = "steps",
+                                             # eval_steps = 1600,
+                                             # metric_for_best_model="loss",
                                              greater_is_better=False,
                                              report_to=["tensorboard"]
                                              )
     pre_train_ds = load_dataset("cc100", lang="en",
-                                cache_dir="/data/n.dallanoce/cc100/hugg_en",
+                                cache_dir="/data/n.dallanoce/cc100/huggingface",
                                 split=f"train[{0}:{512}]",
-                                ignore_verifications=True)
+                                verification_mode='no_checks')
     return training_args, pre_train_ds
 
 

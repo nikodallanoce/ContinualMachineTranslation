@@ -7,11 +7,10 @@ import numpy as np
 class MBartNoiseFunction:
 
     def __init__(self, mask_percentage: float = 0.35, eos_sep: str = "</s>", mask_token: str = "<mask>",
-                 lang: str = "en_XX", poisson_span_len: float = 3.5):
+                 poisson_span_len: float = 3.5):
         self.mask_percentage: float = mask_percentage
         self.eos_sep: str = eos_sep
         self.mask_token: str = mask_token
-        self.lang = lang
         self.poisson_span_len = poisson_span_len
 
     def compute(self, sentence: str, seed: int = 0) -> Tuple[str, str]:

@@ -65,6 +65,10 @@ class MT6Trainer(Seq2SeqTrainer):
 
         return shifted_input_ids
 
+    def evaluate(self, eval_dataset: Optional[Dataset] = None, ignore_keys: Optional[List[str]] = None,
+                 metric_key_prefix: str = "eval", **gen_kwargs) -> Dict[str, float]:
+        return super().evaluate(eval_dataset, ignore_keys, metric_key_prefix, **gen_kwargs)
+
     # def training_step(self, model: nn.Module, inputs: Dict[str, Union[torch.Tensor, Any]]) -> torch.Tensor:
     #     targets = inputs["labels"]
     #     # att_mask = inputs["attention_mask"]
@@ -75,6 +79,8 @@ class MT6Trainer(Seq2SeqTrainer):
     #         inputs["labels"] = labels
     #         loss += super().training_step(model, inputs)
     #     return loss
+
+
 
     def compute_loss(self, model, inputs, return_outputs=False):
         # input_ids = inputs["input_ids"]
