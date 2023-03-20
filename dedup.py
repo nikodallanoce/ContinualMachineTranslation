@@ -76,7 +76,7 @@ if __name__ == '__main__':
                            verification_mode='no_checks')
     string_hashes: Dict[int, str] = dict()
 
-    lang: str = "fr"
+    lang: str = "en"
     sent: str
     for translation in test_ds:
         sent = translation['translation'][lang]
@@ -84,23 +84,23 @@ if __name__ == '__main__':
 
     assert len(test_ds) == len(string_hashes)
 
-    # train_ds = load_dataset("yhavinga/ccmatrix", "en-fr",
-    #                         cache_dir="/data/n.dallanoce/cc_en_fr",
-    #                         split=f"train",
-    #                         verification_mode='no_checks')
-
-    train_ds = load_dataset("cc100", lang=lang,
-                            cache_dir="/data/n.dallanoce/cc100/huggingface",
-                            split=f"train[0:100%]",
+    train_ds = load_dataset("yhavinga/ccmatrix", "en-fr",
+                            cache_dir="/data/n.dallanoce/cc_en_fr",
+                            split=f"train",
                             verification_mode='no_checks')
+
+    # train_ds = load_dataset("cc100", lang=lang,
+    #                         cache_dir="/data/n.dallanoce/cc100/huggingface",
+    #                         split=f"train[0:100%]",
+    #                         verification_mode='no_checks')
 
     # train_ds = load_dataset("wmt14", "fr-en",
     #                         cache_dir="D:\\datasets\\wmt14",
     #                         split=f"train",
     #                         verification_mode='no_checks')
-    # train_ds = test_ds
+    #train_ds = test_ds
 
-    num_of_threads = 2 ** 17
+    num_of_threads = 2 ** 18
     # executor = ThreadPoolExecutor(num_of_threads)
     sent_per_thread, reminder = divmod(len(train_ds), num_of_threads)
 
@@ -111,17 +111,17 @@ if __name__ == '__main__':
         with ThreadPoolExecutor(num_of_threads) as executor:
             for thr in tqdm(range(num_of_threads)):
                 # tmp_ds = train_ds.select(range(i_s, i_e, 1))
-                results.append(
-                    executor.submit(compute_collisions_monolingual, train_ds[i_s:i_e], "text", i_s, pbar,
-                                    string_hashes))
-                # results.append(executor.submit(compute_collisions, train_ds, "en", i_s, i_e, pbar))
+                # results.append(
+                #     executor.submit(compute_collisions_monolingual, train_ds[i_s:i_e], "text", i_s, pbar,
+                #                     string_hashes))
+                results.append(executor.submit(compute_collisions, train_ds[i_s:i_e], lang, i_s, pbar))
                 i_s, i_e, reminder = start_end_indexes(i_s, i_e, reminder)
 
             duplicates_idxs = []
             for res in results:
                 duplicates_idxs.extend(res.result())
 
-    with open("duplicated_text_idxs.txt", mode="w", encoding="UTF-8") as out_file:
+    with open("duplicated_text_idxs_en.txt", mode="w", encoding="UTF-8") as out_file:
         ind_to_write = str(duplicates_idxs)
         out_file.write(ind_to_write + "\n")
         out_file.write(f"total number of indexes: {len(duplicates_idxs)}")

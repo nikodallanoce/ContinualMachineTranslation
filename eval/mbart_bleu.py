@@ -6,19 +6,21 @@ from datasets import load_dataset
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from transformers import pipeline, MBartConfig, MBartForConditionalGeneration, MBartTokenizer, \
-    MarianTokenizer, MarianMTModel
-
+    MarianTokenizer, MarianMTModel, PreTrainedTokenizer, PreTrainedModel
+from datasets import Dataset
 import os
 
-#os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"  # see issue #152
-#os.environ["CUDA_VISIBLE_DEVICES"] = "3"
+
+# os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"  # see issue #152
+# os.environ["CUDA_VISIBLE_DEVICES"] = "3"
 
 
 def tokenize(examples: List[Dict[str, str]], **kwargs):
     tokenizer: MBartTokenizer = kwargs['tokenizer']
-    lang: str = kwargs['lang']
-    batch_src: List[str] = [e['en'] for e in examples]
-    batch_tgt: List[str] = [e[lang] for e in examples]
+    src_lang: str = kwargs['src_lang']
+    tgt_lang: str = kwargs['tgt_lang']
+    batch_src: List[str] = [e[src_lang] for e in examples]
+    batch_tgt: List[str] = [e[tgt_lang] for e in examples]
     # tokenize the batch of sentences
     outputs = tokenizer(batch_src, return_special_tokens_mask=False,
                         add_special_tokens=True, truncation=True,
@@ -28,31 +30,29 @@ def tokenize(examples: List[Dict[str, str]], **kwargs):
     return {'input_ids': outputs['input_ids'], 'original_text': batch_tgt}
 
 
-def collate_tokenize(batch):
-    tok_en()
-
-    print()
-
-
-def calcolate_bleu(translation_ds):
-    translation_ds = translation_ds.map(tokenize, batched=True, input_columns=['translation'],
-                                        fn_kwargs={'tokenizer': tok_en, 'lang': 'fr'})
-    translation_ds = translation_ds.with_format('torch')
-    test_loader = DataLoader(translation_ds, num_workers=4, batch_size=32, drop_last=True, pin_memory=True)
-    trans_fr = []
+def compute_bleu(trans_pair_ds: Dataset, model: PreTrainedModel,
+                 src_lang: str,
+                 tgt_lang: str,
+                 input_column: str = "translation",
+                 max_length: int = 128,
+                 num_beams: int = 5):
+    tokenizer = MBartTokenizer.from_pretrained("facebook/mbart-large-cc25", src_lang=src_lang + "_XX",
+                                               tgt_lang=tgt_lang + "_XX")
+    trans_pair_ds = trans_pair_ds.map(tokenize, batched=True, input_columns=[input_column],
+                                      fn_kwargs={'tokenizer': tokenizer, 'src_lang': src_lang, 'tgt_lang': tgt_lang})
+    trans_pair_ds = trans_pair_ds.with_format('torch')
+    test_loader = DataLoader(trans_pair_ds, num_workers=1, pin_memory=True)
+    transl = []
     original_txt = []
+    decoder_start_token_id: int = tokenizer.convert_tokens_to_ids(tgt_lang + "_XX")
     for i, batch in enumerate(tqdm(test_loader)):
-        translation = model.generate(batch['input_ids'].to(dev), num_beams=5, max_length=128,
-                                     decoder_start_token_id=250008)
-        trans_fr += (tok_en.batch_decode(translation, skip_special_tokens=True))
+        translation = model.generate(batch['input_ids'].to(dev), num_beams=num_beams, max_length=max_length,
+                                     decoder_start_token_id=decoder_start_token_id)
+        transl += (tok_en.batch_decode(translation, skip_special_tokens=True))
         original_txt += [[elem] for elem in batch['original_text']]
-    # translation = model.generate(tokenized['input_ids'], max_length=128, decoder_start_token_id=250008, num_beams=5)
-    # translated_fr = tok_en.batch_decode(translation, skip_special_tokens=True)
-    # print(translated_fr)
     bleu = evaluate.load("bleu")
-    # decoded_trans = tok_en.batch_decode(trans_fr, skip_special_tokens=True)
-    results = bleu.compute(predictions=trans_fr, references=original_txt)
-    print(results)
+    results = bleu.compute(predictions=transl, references=original_txt)
+    return results
 
 
 if __name__ == '__main__':
@@ -89,7 +89,7 @@ if __name__ == '__main__':
                                   cache_dir="/data/n.dallanoce/wmt14",
                                   split=f"test",
                                   ignore_verifications=True)
-    calcolate_bleu(translation_ds)
+    compute_bleu(translation_ds, model, src_lang="en", tgt_lang="fr")
 
 # pipe = pipeline(model=model, task="translation", tokenizer=tok_en, device="cuda:0")
 # text_translated = pipe("How are you?", src_lang="en_XX", tgt_lang="fr_XX")

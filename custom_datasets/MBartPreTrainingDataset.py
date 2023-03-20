@@ -20,6 +20,7 @@ class MBartPreTrainingDataset(Dataset):
         self.tokenizers: Dict[str, MBartTokenizer] = tokenizers
         self.input_max_length = input_max_length
         self.noise_fn = MBartNoiseFunction()
+        self.ref_len = input_max_length - input_max_length * 0.4
 
     def __len__(self):
         return len(self.dataset)
@@ -30,9 +31,9 @@ class MBartPreTrainingDataset(Dataset):
         label_ids = label_ids.strip()
         lang, i_s, i_e = retrieve_lang(self.ds_indexes, index)
         tokenizer = self.tokenizers[lang]
-        ref_len = self.input_max_length - self.input_max_length * 0.4
+
         rng = np.random.default_rng(index)
-        while len(label_ids.split(" ")) < ref_len:
+        while len(label_ids.split(" ")) < self.ref_len:
             new_index = rng.integers(i_s, i_e, dtype=int)
             new_sent = self.dataset[new_index][field]
             if len(new_sent) < 4:
@@ -48,17 +49,9 @@ class MBartPreTrainingDataset(Dataset):
         label_ids = tokenized[0].view(-1)
         masked_ids = tokenized[1].view(-1)
 
-        # masked_ids = self.permute(masked_ids, new_index)  # self.permute(label_ids, index)
-        # not_ones = torch.numel(masked_ids) - (masked_ids == 1).sum()
-        # if int(not_ones) < 4:
-        #     print(label_ids)
-        #     print(masked_ids)
-        #     assert False
         att_mask = torch.where(masked_ids != 1, 1, 0)
-        # masked_ids = self.mask_tokens(masked_ids, index, 0.35)
         label_ids = torch.where(label_ids == 1, -100, label_ids)
         return {'input_ids': masked_ids, 'labels': label_ids, 'attention_mask': att_mask}
-        # return label_ids, att_mask, masked_ids
 
 # def permute(self, tokenized_ids: Tensor, seed: int) -> Tensor:
 #     sosi = self.get_punctuation_indexes(tokenized_ids)

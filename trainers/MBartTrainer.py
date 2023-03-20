@@ -17,7 +17,8 @@ class MBartTrainer(Seq2SeqTrainer):
 
     def __init__(self, model: Union[PreTrainedModel, nn.Module] = None, args: TrainingArguments = None,
                  data_collator: Optional[DataCollator] = None, train_dataset: Optional[Dataset] = None,
-                 eval_dataset: Optional[Dataset] = None, tokenizer: Optional[PreTrainedTokenizerBase] = None,
+                 eval_dataset: Optional[Dataset] = None, eval_tokenizers: Dict[str, MBartTokenizer] = None,
+                 tokenizer: Optional[PreTrainedTokenizerBase] = None,
                  model_init: Callable[[], PreTrainedModel] = None,
                  compute_metrics: Optional[Callable[[EvalPrediction], Dict]] = None,
                  callbacks: Optional[List[TrainerCallback]] = None,
@@ -25,27 +26,12 @@ class MBartTrainer(Seq2SeqTrainer):
                  preprocess_logits_for_metrics: Callable[[torch.Tensor, torch.Tensor], torch.Tensor] = None):
         super().__init__(model, args, data_collator, train_dataset, eval_dataset, tokenizer, model_init,
                          compute_metrics, callbacks, optimizers, preprocess_logits_for_metrics)
+        self.eval_tokenizers: Dict[str, MBartTokenizer] = eval_tokenizers
 
-    # def collate_pad(self, batch: List[Dict[str, Tensor]]) -> Dict[str, Tensor]:
-    #     inp_ids_list: List[Tensor] = []
-    #     labels_list: List[Tensor] = []
-    #     att_mask_list: List[Tensor] = []
-    #     elem: Dict[str, Tensor]
-    #     for elem in batch:
-    #         inp_ids_list.append(elem['input_ids'])
-    #         labels_list.append(elem['labels'])
-    #         att_mask_list.append(elem['attention_mask'])
-    #
-    #     padding_id = self.model.config.pad_token_id
-    #     padded_inp: Tensor = pad_sequence(inp_ids_list, True, padding_value=padding_id)
-    #     padded_lab: Tensor = pad_sequence(labels_list, True, padding_value=-100)
-    #     padded_att: Tensor = pad_sequence(att_mask_list, True, padding_value=0)
-    #     tgt_len = max([padded_inp.shape[-1], padded_lab.shape[-1], padded_att.shape[-1]])
-    #     padded_inp: Tensor = pad(padded_inp, pad=(0, tgt_len - padded_inp.shape[-1], 0, 0), mode='constant',
-    #                              value=padding_id)
-    #     padded_att: Tensor = pad(padded_att, pad=(0, tgt_len - padded_att.shape[-1], 0, 0), mode='constant', value=0)
-    #     padded_lab: Tensor = pad(padded_lab, pad=(0, tgt_len - padded_lab.shape[-1], 0, 0), mode='constant', value=-100)
-    #     return {"input_ids": padded_inp, "labels": padded_lab, "attention_mask": padded_att}
+    def evaluate(self, eval_dataset: Optional[Dataset] = None, ignore_keys: Optional[List[str]] = None,
+                 metric_key_prefix: str = "eval", **gen_kwargs) -> Dict[str, float]:
+
+        return super().evaluate(eval_dataset, ignore_keys, metric_key_prefix, **gen_kwargs)
 
     def get_train_dataloader(self) -> DataLoader:
         return DataLoader(self.train_dataset,

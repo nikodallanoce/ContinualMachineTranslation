@@ -6,13 +6,18 @@ import numpy as np
 
 class MT6NoiseFunction:
 
-    def compute(self, text: str, seed: int, n_groups: int = 3, noise_density: float = 0.5, return_list=False) -> Tuple[
+    def __init__(self, n_groups: int = 3, noise_density: float = 0.5, return_list=False):
+        self.n_groups: int = n_groups
+        self.noise_density: float = noise_density
+        self.return_list: bool = return_list
+
+    def compute(self, text: str, seed: int) -> Tuple[
         str, Union[List[str], str]]:
 
         src_tokens: List[str] = list(filter(None, text.split(" ")))
-        trg_tokens, n_span = self.mask_src_trg(noise_density, seed, src_tokens)
+        trg_tokens, n_span = self.mask_src_trg(self.noise_density, seed, src_tokens)
 
-        span_per_group, span_reminder = divmod(n_span, n_groups)
+        span_per_group, span_reminder = divmod(n_span, self.n_groups)
         targets: Union[List[str], str] = []
         sent = ""
         counter = 0
@@ -32,7 +37,7 @@ class MT6NoiseFunction:
                 counter = 0
                 span_reminder -= 1
 
-        if not return_list:
+        if not self.return_list:
             targets = " ".join(targets)
         return " ".join(filter(None, src_tokens)), targets
 
