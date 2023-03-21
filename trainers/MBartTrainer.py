@@ -2,15 +2,13 @@ from functools import partial
 from typing import Union, Optional, Callable, Dict, List, Tuple, Any
 from utilities.utility import collate_pad
 import torch
-from datasets import load_dataset
+
 from torch import nn, Tensor
-from torch.nn.functional import pad
-from torch.nn.utils.rnn import pad_sequence
+
 from torch.utils.data import Dataset, DataLoader, RandomSampler
 from transformers import PreTrainedModel, TrainingArguments, DataCollator, PreTrainedTokenizerBase, \
     EvalPrediction, TrainerCallback, Seq2SeqTrainer, MBartTokenizer
-
-from custom_datasets.MBartTranslationDataset import MBartTranslationDataset
+from eval.mbart_bleu import compute_bleu
 
 
 class MBartTrainer(Seq2SeqTrainer):
@@ -28,10 +26,27 @@ class MBartTrainer(Seq2SeqTrainer):
                          compute_metrics, callbacks, optimizers, preprocess_logits_for_metrics)
         self.eval_tokenizers: Dict[str, MBartTokenizer] = eval_tokenizers
 
+    # def get_eval_dataloader(self, eval_dataset: Optional[Dataset] = None) -> DataLoader:
+    #     return DataLoader(eval_dataset,
+    #                       collate_fn=partial(collate_pad, pad_token_id=self.model.config.pad_token_id),
+    #                       batch_size=self.args.per_device_eval_batch_size,
+    #                       drop_last=self.args.dataloader_drop_last,
+    #                       num_workers=self.args.dataloader_num_workers,
+    #                       pin_memory=False,
+    #                       shuffle=False)
+
     def evaluate(self, eval_dataset: Optional[Dataset] = None, ignore_keys: Optional[List[str]] = None,
                  metric_key_prefix: str = "eval", **gen_kwargs) -> Dict[str, float]:
 
-        return super().evaluate(eval_dataset, ignore_keys, metric_key_prefix, **gen_kwargs)
+        eval_metrics: Dict[str, float] = dict()
+        for eval_task in self.eval_dataset:
+            transl_pair_ds = self.eval_dataset[eval_task]
+            src_tgt_langs = eval_task.split("_")
+            eval_metrics["eval_" + eval_task] = compute_bleu(transl_pair_ds, self.model,
+                                                             src_lang=src_tgt_langs[1],
+                                                             tgt_lang=src_tgt_langs[2])["bleu"] * 100
+        self.log(eval_metrics)
+        return eval_metrics
 
     def get_train_dataloader(self) -> DataLoader:
         return DataLoader(self.train_dataset,

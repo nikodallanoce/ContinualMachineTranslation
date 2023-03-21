@@ -30,66 +30,69 @@ def tokenize(examples: List[Dict[str, str]], **kwargs):
     return {'input_ids': outputs['input_ids'], 'original_text': batch_tgt}
 
 
-def compute_bleu(trans_pair_ds: Dataset, model: PreTrainedModel,
+def compute_bleu(trans_pair_ds: Dataset,
+                 model: MBartForConditionalGeneration,
                  src_lang: str,
                  tgt_lang: str,
                  input_column: str = "translation",
                  max_length: int = 128,
-                 num_beams: int = 5):
+                 num_beams: int = 5,
+                 device: str = "cuda:0"):
     tokenizer = MBartTokenizer.from_pretrained("facebook/mbart-large-cc25", src_lang=src_lang + "_XX",
                                                tgt_lang=tgt_lang + "_XX")
     trans_pair_ds = trans_pair_ds.map(tokenize, batched=True, input_columns=[input_column],
                                       fn_kwargs={'tokenizer': tokenizer, 'src_lang': src_lang, 'tgt_lang': tgt_lang})
-    trans_pair_ds = trans_pair_ds.with_format('torch')
-    test_loader = DataLoader(trans_pair_ds, num_workers=1, pin_memory=True)
+    trans_pair_ds = trans_pair_ds.with_format('torch', columns=["input_ids", "original_text"])
+    test_loader = DataLoader(trans_pair_ds, num_workers=8, batch_size=64, drop_last=True, pin_memory=True)
     transl = []
     original_txt = []
     decoder_start_token_id: int = tokenizer.convert_tokens_to_ids(tgt_lang + "_XX")
     for i, batch in enumerate(tqdm(test_loader)):
-        translation = model.generate(batch['input_ids'].to(dev), num_beams=num_beams, max_length=max_length,
+        translation = model.generate(batch['input_ids'].to(device), num_beams=num_beams, max_length=max_length,
                                      decoder_start_token_id=decoder_start_token_id)
-        transl += (tok_en.batch_decode(translation, skip_special_tokens=True))
+        transl += (tokenizer.batch_decode(translation, skip_special_tokens=True))
         original_txt += [[elem] for elem in batch['original_text']]
     bleu = evaluate.load("bleu")
     results = bleu.compute(predictions=transl, references=original_txt)
     return results
 
-
-if __name__ == '__main__':
-    # translation_ds = load_dataset("yhavinga/ccmatrix", "en-fr",
-    #                               cache_dir="/data/n.dallanoce/cc_en_fr",
-    #                               split=f"train[25000000:25003000]",
-    #                               ignore_verifications=True)
-
-    # to_translate, original = translation_ds[1]['translation']['en'], translation_ds[1]['translation']['fr']
-
-    dev = "cuda:0"
-    tok_en = MBartTokenizer.from_pretrained("facebook/mbart-large-cc25", src_lang="en_XX", tgt_lang="fr_XX")
-    model: MBartForConditionalGeneration = MBartForConditionalGeneration.from_pretrained(
-        "/home/n.dallanoce/PyCharm/pretraining/weights/mbart_ft_fr-en_cc_2/checkpoint-500000").to(dev)
-    # tok_en = MarianTokenizer.from_pretrained("Helsinki-NLP/opus-mt-en-fr")
-    # model = MarianMTModel.from_pretrained("Helsinki-NLP/opus-mt-en-fr", cache_dir = "/home/n.dallanoce/huggingface/models").to(dev)
-    # model.load_state_dict(
-    #     torch.load(
-    #         "/home/n.dallanoce/PyCharm/pretraining/weights/mbart_ft_fr-en_cc_ls/checkpoint-70000/pytorch_model.bin",
-    #         map_location=dev))
-    # tokenized = tok_en(to_translate,
-    #                    text_target="", add_special_tokens=True, return_tensors='pt')
-    model.train(False)
-
-    # model.load_state_dict(
-    #     torch.load("D:\\trainer\\mbart_ft_fr-en\\pytorch_model.bin", map_location='cuda:0'))
-
-    # trans = tok_en.batch_decode(
-    #     model.generate(tokenized['input_ids'].to(dev), max_length=128, decoder_start_token_id=250008, num_beams=3))
-    # print({'sentence': to_translate, 'prediction': trans, 'original': original})
-
-    # translation_ds = translation_ds.remove_columns(['id', 'score', 'translation'])
-    translation_ds = load_dataset("wmt14", "fr-en",
-                                  cache_dir="/data/n.dallanoce/wmt14",
-                                  split=f"test",
-                                  ignore_verifications=True)
-    compute_bleu(translation_ds, model, src_lang="en", tgt_lang="fr")
-
-# pipe = pipeline(model=model, task="translation", tokenizer=tok_en, device="cuda:0")
-# text_translated = pipe("How are you?", src_lang="en_XX", tgt_lang="fr_XX")
+#
+# if __name__ == '__main__':
+#     # translation_ds = load_dataset("yhavinga/ccmatrix", "en-fr",
+#     #                               cache_dir="/data/n.dallanoce/cc_en_fr",
+#     #                               split=f"train[25000000:25003000]",
+#     #                               ignore_verifications=True)
+#
+#     # to_translate, original = translation_ds[1]['translation']['en'], translation_ds[1]['translation']['fr']
+#
+#     dev = "cuda:0"
+#     # tok_en = MBartTokenizer.from_pretrained("facebook/mbart-large-cc25", src_lang="en_XX", tgt_lang="fr_XX")
+#     model: MBartForConditionalGeneration = MBartForConditionalGeneration.from_pretrained(
+#         "/home/n.dallanoce/PyCharm/pretraining/weights/mbart_ft_fr-en_cc/checkpoint-500000").to(dev)
+#     # tok_en = MarianTokenizer.from_pretrained("Helsinki-NLP/opus-mt-en-fr")
+#     # model = MarianMTModel.from_pretrained("Helsinki-NLP/opus-mt-en-fr", cache_dir = "/home/n.dallanoce/huggingface/models").to(dev)
+#     # model.load_state_dict(
+#     #     torch.load(
+#     #         "/home/n.dallanoce/PyCharm/pretraining/weights/mbart_ft_fr-en_cc_ls/checkpoint-70000/pytorch_model.bin",
+#     #         map_location=dev))
+#     # tokenized = tok_en(to_translate,
+#     #                    text_target="", add_special_tokens=True, return_tensors='pt')
+#     model.train(False)
+#
+#     # model.load_state_dict(
+#     #     torch.load("D:\\trainer\\mbart_ft_fr-en\\pytorch_model.bin", map_location='cuda:0'))
+#
+#     # trans = tok_en.batch_decode(
+#     #     model.generate(tokenized['input_ids'].to(dev), max_length=128, decoder_start_token_id=250008, num_beams=3))
+#     # print({'sentence': to_translate, 'prediction': trans, 'original': original})
+#
+#     # translation_ds = translation_ds.remove_columns(['id', 'score', 'translation'])
+#     translation_ds = load_dataset("wmt14", "fr-en",
+#                                   cache_dir="/data/n.dallanoce/wmt14",
+#                                   split=f"test",
+#                                   verification_mode='no_checks')
+#     bleu = compute_bleu(translation_ds, model, src_lang="en", tgt_lang="fr")
+#     print(bleu)
+#
+# # pipe = pipeline(model=model, task="translation", tokenizer=tok_en, device="cuda:0")
+# # text_translated = pipe("How are you?", src_lang="en_XX", tgt_lang="fr_XX")
