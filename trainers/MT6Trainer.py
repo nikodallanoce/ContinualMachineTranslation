@@ -33,7 +33,8 @@ class MT6Trainer(Seq2SeqTrainer):
                           batch_size=self.args.per_device_train_batch_size,
                           drop_last=self.args.dataloader_drop_last,
                           num_workers=self.args.dataloader_num_workers,
-                          pin_memory=self.args.dataloader_pin_memory)
+                          pin_memory=self.args.dataloader_pin_memory,
+                          shuffle=True)
 
     def compute_loss_mt5(self, model, inputs, return_outputs=False):
         if "labels" in inputs and self.label_smoother is not None:
@@ -74,26 +75,29 @@ class MT6Trainer(Seq2SeqTrainer):
     #     # att_mask = inputs["attention_mask"]
     #     loss: Tensor = 0
     #     for i in range(targets.shape[1]):
-    #         groups: Tensor = targets[:, i, :]
-    #         labels = groups.contiguous()
+    #         group: Tensor = targets[:, i, :]
+    #         labels = group.contiguous()
     #         inputs["labels"] = labels
     #         loss += super().training_step(model, inputs)
+    #         #loss += super().compute_loss(model, inputs)
     #     return loss
-
-
 
     def compute_loss(self, model, inputs, return_outputs=False):
         # input_ids = inputs["input_ids"]
-        targets = inputs["labels"]
+        groups = inputs["labels"]
         # att_mask = inputs["attention_mask"]
-        loss: Tensor = 0
-        for i in range(targets.shape[1]):
-            groups: Tensor = targets[:, i, :]
-            labels: Tensor = groups.contiguous()
+        group_loss: List[Tensor] = []
+        loss_sum = 0
+        for i in range(groups.shape[1]):
+            group_i: Tensor = groups[:, i, :]
+            group_i: Tensor = group_i.contiguous()
             # decoder_input_ids = self.shift_tokens_right(labels, model.config.pad_token_id)
             # if int(labels[:, 0]) == model.config.eos_token_id:
             #     continue
-            inputs["labels"] = labels
-            inputs["decoder_input_ids"] = self.shift_right(labels)
-            loss += super().compute_loss(model, inputs, return_outputs)
+            inputs["labels"] = group_i
+            inputs["decoder_input_ids"] = self.shift_right(group_i)
+            loss_i = super().compute_loss(model, inputs, return_outputs)
+            group_loss.append(loss_i)
+            #loss_sum += loss_i
+        loss = torch.sum(torch.stack(group_loss))
         return loss

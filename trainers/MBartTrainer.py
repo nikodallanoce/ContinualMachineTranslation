@@ -1,5 +1,9 @@
 from functools import partial
 from typing import Union, Optional, Callable, Dict, List, Tuple, Any
+
+import numpy as np
+from transformers.trainer_utils import EvalLoopOutput
+
 from utilities.utility import collate_pad
 import torch
 
@@ -39,14 +43,29 @@ class MBartTrainer(Seq2SeqTrainer):
                  metric_key_prefix: str = "eval", **gen_kwargs) -> Dict[str, float]:
 
         eval_metrics: Dict[str, float] = dict()
-        for eval_task in self.eval_dataset:
-            transl_pair_ds = self.eval_dataset[eval_task]
-            src_tgt_langs = eval_task.split("_")
-            eval_metrics["eval_" + eval_task] = compute_bleu(transl_pair_ds, self.model,
-                                                             src_lang=src_tgt_langs[1],
-                                                             tgt_lang=src_tgt_langs[2])["bleu"] * 100
+        src_tgt_langs = metric_key_prefix.split("_")
+        src_lang, tgt_lang = src_tgt_langs[1], src_tgt_langs[2]
+        for i in range(2):
+            bleu_score = compute_bleu(eval_dataset, self.model,
+                                      src_lang=src_lang,
+                                      tgt_lang=tgt_lang)["bleu"] * 100
+            eval_metrics[f"eval_bleu_{src_lang}_{tgt_lang}"] = bleu_score
+            src_lang, tgt_lang = tgt_lang, src_lang
+
         self.log(eval_metrics)
         return eval_metrics
+
+    # def evaluation_loop(self, dataloader: DataLoader, description: str, prediction_loss_only: Optional[bool] = None,
+    #                     ignore_keys: Optional[List[str]] = None, metric_key_prefix: str = "eval") -> EvalLoopOutput:
+    #     eval_metrics: Dict[str, float] = dict()
+    #     src_tgt_langs = metric_key_prefix.split("_")
+    #     # bleu_score = compute_bleu(eval_dataset, self.model,
+    #     #                           src_lang=src_tgt_langs[2],
+    #     #                           tgt_lang=src_tgt_langs[3])["bleu"] * 100
+    #     bleu_score = 32
+    #     eval_metrics[metric_key_prefix] = bleu_score
+    #
+    #     return super().evaluation_loop(dataloader, description, prediction_loss_only, ignore_keys, metric_key_prefix)
 
     def get_train_dataloader(self) -> DataLoader:
         return DataLoader(self.train_dataset,

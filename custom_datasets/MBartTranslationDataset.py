@@ -13,7 +13,7 @@ import datasets
 class MBartTranslationDataset(Dataset):
 
     def __init__(self, hugg_dataset: datasets.Dataset, tokenizer: MBartTokenizer, trg_lang: str,
-                 src_lang: str = 'en', ds_field="translation", input_max_length: int = 128, min_words: int = 4,
+                 src_lang: str = 'en', ds_field="translation", input_max_length: int = 64, min_words: int = 4,
                  skip_rows: Set[int] = None):
         super(MBartTranslationDataset, self).__init__()
 
@@ -44,7 +44,7 @@ class MBartTranslationDataset(Dataset):
                                  max_length=self.input_max_length,
                                  return_tensors='pt')
         labels = outputs['labels'].view(-1)
-        labels = torch.where(labels == 1, -100, labels)
+        labels = torch.where(labels == 1, -100, labels) # ancora necessario?
         return {'input_ids': outputs['input_ids'].view(-1), 'labels': labels,
                 'attention_mask': outputs['attention_mask'].view(-1)}
 

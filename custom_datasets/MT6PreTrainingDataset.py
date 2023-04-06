@@ -2,6 +2,7 @@ import random
 from typing import Dict, Tuple
 
 import datasets
+import numpy as np
 import torch
 from torch import Tensor
 from torch.utils.data import Dataset
@@ -13,13 +14,15 @@ from utilities.utility import prepare_ds_indexes, retrieve_lang
 
 class MT6PreTrainingDataset(Dataset):
 
-    def __init__(self, hugg_datasets: Dict[str, datasets.Dataset], tokenizers: Dict[str, MT5Tokenizer],
-                 noise_fn: MT6NoiseFunction = MT6NoiseFunction(), input_max_length=128):
+    def __init__(self, hugg_dataset: datasets.Dataset, tokenizer: MT5Tokenizer,
+                 input_max_length=128, ds_field: str = "text",
+                 noise_fn: MT6NoiseFunction = MT6NoiseFunction(return_list=True)):
         super().__init__()
-        self.ds_indexes: Dict[str, Tuple[int, int]] = prepare_ds_indexes(hugg_datasets)
-        self.dataset: datasets.Dataset = datasets.concatenate_datasets(list(hugg_datasets.values()))
-        self.tokenizers: Dict[str, MT5Tokenizer] = tokenizers
+        # self.ds_indexes: Dict[str, Tuple[int, int]] = prepare_ds_indexes(hugg_datasets)
+        self.dataset: datasets.Dataset = hugg_dataset  # datasets.concatenate_datasets(list(hugg_datasets.values()))
+        self.tokenizer: MT5Tokenizer = tokenizer
         self.input_max_length: int = input_max_length
+        self.ds_field = ds_field
         self.noise_fn = noise_fn
 
     def __len__(self):
@@ -49,28 +52,30 @@ class MT6PreTrainingDataset(Dataset):
     #     return outputs
 
     def __getitem__(self, index):
-        field = "text"
+        field = self.ds_field
+        sampled_sent_min_len = 4
         text = self.dataset[index][field]
-        text = text.strip()
-        lang, i_s, i_e = retrieve_lang(self.ds_indexes, index)
-        tokenizer = self.tokenizers[lang]
-        ref_len = self.input_max_length - self.input_max_length * 0.4
-        new_index = index
-        n_groups = 3
-        text, targets = self.noise_fn.compute(text, new_index)
-        while len(targets) < n_groups:  # only if return_list = True
-            new_index = random.randint(0, self.hugg_dataset.num_rows - 1)
-            text = self.hugg_dataset[new_index][field]
-            ext, targets = self.noise_fn.compute(text, new_index)
 
-        input_tok = tokenizer(text, return_special_tokens_mask=False,
+        rng = np.random.default_rng(index)
+        while len(text.split(" ")) < sampled_sent_min_len:
+            new_index = rng.integers(0, len(self.dataset) - 1, dtype=int)
+            text = self.dataset[new_index][field]
+
+        n_groups = 3
+        text, targets = self.noise_fn.compute(text, index)
+        while len(targets) < n_groups:  # only if return_list = True
+            new_index =  rng.integers(0, len(self.dataset) - 1, dtype=int)
+            text = self.dataset[new_index][field]
+            text, targets = self.noise_fn.compute(text, new_index)
+
+        input_tok = self.tokenizer(text, return_special_tokens_mask=False,
                               add_special_tokens=True, truncation=True,
                               max_length=self.input_max_length, padding='longest',
                               return_tensors='pt')
         # while len(targets) < 3:
         #     targets.append("")
 
-        out_tok = tokenizer(targets, return_special_tokens_mask=False,
+        out_tok = self.tokenizer(targets, return_special_tokens_mask=False,
                             add_special_tokens=True, truncation=True,
                             max_length=self.input_max_length // len(targets), padding='longest',
                             return_tensors='pt', return_attention_mask=False, return_token_type_ids=False)
