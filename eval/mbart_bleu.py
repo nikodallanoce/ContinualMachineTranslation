@@ -76,7 +76,7 @@ if __name__ == '__main__':
     dev = "cuda:0" if torch.cuda.is_available() else "cpu"
     #     # tok_en = MBartTokenizer.from_pretrained("facebook/mbart-large-cc25", src_lang="en_XX", tgt_lang="fr_XX")
     model: MBartForConditionalGeneration = MBartForConditionalGeneration.from_pretrained(
-        "/home/n.dallanoce/PyCharm/pretraining/weights/mbart_ft_fr-en_cc_2/checkpoint-295000").to(dev)
+        "/home/n.dallanoce/PyCharm/pretraining/weights/mbart_ft_fr-en_hilr/checkpoint-260000").to(dev)
     #     # tok_en = MarianTokenizer.from_pretrained("Helsinki-NLP/opus-mt-en-fr")
     #     # model = MarianMTModel.from_pretrained("Helsinki-NLP/opus-mt-en-fr", cache_dir = "/home/n.dallanoce/huggingface/models").to(dev)
     #     # model.load_state_dict(
@@ -99,7 +99,7 @@ if __name__ == '__main__':
                                   cache_dir="/data/n.dallanoce/wmt14",
                                   split=f"test",
                                   verification_mode='no_checks')
-    bleu = compute_bleu(translation_ds, model, src_lang="en", tgt_lang="fr", device=dev, num_beams=5)
+    bleu = compute_bleu(translation_ds, model, src_lang="fr", tgt_lang="en", device=dev, num_beams=5)
     print(bleu)
 #
 # # pipe = pipeline(model=model, task="translation", tokenizer=tok_en, device="cuda:0")

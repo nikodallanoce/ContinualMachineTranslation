@@ -1,85 +1,95 @@
-import torch
-from datasets import load_dataset
-from torch.nn.functional import pad
-from torch.optim import Adam
-from torch.utils.data import DataLoader
-from tqdm import tqdm
-from transformers import MBartTokenizer, MBartConfig
+import random
+from typing import List, Tuple, Dict
 
-from models.MBart import MBart
-from noise_functions.MBartNoiseFunction import MBartNoiseFunction
-from custom_datasets.MBartPreTrainingDataset import MBartPreTrainingDataset
+import numpy as np
 
 
-def testing():
-    pre_train_load = DataLoader(pre_train_ds, batch_size=16, drop_last=True, shuffle=False)
-    for e in tqdm(pre_train_load):
-        pass
+def span_already_masked(span_start_idx: int, span_length: int, spans_dict: Dict[int, List[str]]):
+    for i in range(span_start_idx, span_start_idx + span_length):
+        if i in spans_dict:
+            return True
+    return False
 
 
-def train():
-    model: MBart = MBart(mbart_config, device_ids=[3])
-    # model.load_state_dict(torch.load("mbart_v2_test.pt"))
-    # optimizer = Adam(model.parameters(), eps=1e-6:, betas=(0.98, 0.999))
-    optimizer = Adam(model.parameters())
-    # lr_scheduler = get_scheduler("linear", optimizer=optimizer, num_training_steps=5e5, num_warmup_steps=0)
-    pre_train_load = DataLoader(pre_train_ds, batch_size=16, drop_last=True, shuffle=True, pin_memory=True,
-                                num_workers=8)
-    model.fit_epoch(pre_train_load, optimizer, epochs=50)
+def index_inside_bounds(index: int, span_len: int, bounds: List[Tuple[int, int]]):
+    for b in bounds:
+        if b[0] <= index + span_len and index <= b[1]:
+            return True
+    return False
 
 
-def shift_tokens_right(input_ids: torch.Tensor, pad_token_id: int):
-    """
-    Shift input ids one token to the right, and wrap the last non pad token (the <LID> token) Note that MBart does not
-    have a single `decoder_start_token_id` in contrast to other Bart-like models.
-    """
-    prev_output_tokens = input_ids.clone()
+def compute_span_indexes(noise_density: float, seed: int, src_tokens: List[str]):
+    rng = np.random.default_rng(seed)
+    span_bounds_idxs: List[Tuple[int, int]] = []
+    tokens_to_mask = round(len(src_tokens) * noise_density)
+    span_length = rng.poisson(3)
+    start_mask_idx = rng.integers(1, len(src_tokens) - span_length)
+    span_bounds_idxs.append((start_mask_idx, start_mask_idx + span_length))
+    tokens_to_mask = tokens_to_mask - span_length
+    while tokens_to_mask > 0:
+        span_length = rng.poisson(3)
+        start_mask_idx = rng.integers(1, len(src_tokens) - span_length)
+        while index_inside_bounds(start_mask_idx, span_length, span_bounds_idxs):
+            span_length = rng.poisson(3)
+            start_mask_idx = rng.integers(1, len(src_tokens) - span_length)
+        tokens_to_mask = tokens_to_mask - span_length
+        span_bounds_idxs.append((start_mask_idx, start_mask_idx + span_length))
+    span_bounds_idxs.sort(key=lambda x: x[0])
+    return span_bounds_idxs
 
-    if pad_token_id is None:
-        raise ValueError("self.model.config.pad_token_id has to be defined.")
-    # replace possible -100 values in labels by `pad_token_id`
-    prev_output_tokens.masked_fill_(prev_output_tokens == -100, pad_token_id)
 
-    index_of_eos = (prev_output_tokens.ne(pad_token_id).sum(dim=1) - 1).unsqueeze(-1)
-    decoder_start_tokens = prev_output_tokens.gather(1, index_of_eos).squeeze()
-    prev_output_tokens[:, 1:] = prev_output_tokens[:, :-1].clone()
-    # prev_output_tokens[:, -1] = pad_token_id
-    prev_output_tokens[:, 0] = decoder_start_tokens
-    num_of_cols = prev_output_tokens.shape[-1]
-    for row, col_idx in enumerate(index_of_eos):
-        del_idx = int(col_idx) + 1
-        if del_idx < num_of_cols:
-            prev_output_tokens[row, del_idx] = pad_token_id
+class MaskTokenGenerator:
+    def __init__(self):
+        self.i = 0
 
-    return prev_output_tokens
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        mask_tok = f"<extra_id_{self.i}>"
+        self.i += 1
+        return mask_tok
+
+
+def mask(noise_density: float, seed: int, src_tokens: List[str]):
+    span_bounds_idx: List[Tuple[int, int]] = compute_span_indexes(noise_density, seed, src_tokens)
+    src_tokens: np.ndarray = np.array(src_tokens, dtype=object)
+    src_mask_gen = MaskTokenGenerator()
+    tgt_mask_gen = MaskTokenGenerator()
+    tgt_tokens: List[str] = [next(tgt_mask_gen)]
+    for bounds in span_bounds_idx:
+        i_s, i_e = bounds
+        masked_src = list(src_tokens[i_s:i_e])
+        src_tokens[i_s:i_e] = ""
+        src_tokens[i_s] = next(src_mask_gen)
+        tgt_tokens.extend(masked_src)
+        if i_e < len(src_tokens):
+            tgt_tokens.append(next(tgt_mask_gen))
+
+    src, tgt = " ".join(filter(None, src_tokens)), " ".join(filter(None, tgt_tokens))
+
+    return src, tgt
+
+
+def remove_words(noise_density: float, seed: int, src_tokens: List[str]):
+    rng = np.random.default_rng(seed)
+    targets: Dict[int, List[str]] = {}
+    num_words = len(src_tokens)
+    num_remove = int(num_words * noise_density)
+    start = 1
+    while num_remove > 0:
+        span_length = rng.poisson(3)
+        start = random.randint(0, num_words - span_length)
+        while span_already_masked(start, span_length, targets):
+            start = random.randint(0, num_words - span_length)
+        src_tok_to_remove = src_tokens[start:start + 3]
+        targets[start] = src_tok_to_remove
+        src_tokens[start + (span_length - 1)] = "<mask>"
+        src_tokens[start:start + (span_length - 1)] = ""
+        num_words -= span_length
+    return ' '.join(src_tokens)
 
 
 if __name__ == '__main__':
-    tensor1 = torch.tensor([[5, 5, 7, 3, 2, 250004, 1], [5, 5, 7, 14, 2, 250004, 1]], dtype=torch.int32)
-    padded_inp = pad(tensor1, pad=(0, 10, 0, 0), mode='constant', value=1)
-    ris = shift_tokens_right(tensor1, 1)
-    # sent = "I must say that, while I won't recommend this novel to anyone, I think it was powerful. It felt to me like performance art, something I endured, an artistic experience which divides people but is undeniably compelling."
-    # noise_fn.compute(sent)
-
-    # translation_ds = load_dataset("text", data_files={"train": ["/data/n.dallanoce/cc100/en.txt"]},
-    #                             cache_dir="/data/n.dallanoce/cc100/hugg_en", split=f"train[{300000}:{360000}]",
-    #                             ignore_verifications=True)
-
-    pre_train_ds = load_dataset("text", data_files={"train": ["test_hugg_en/test_data_hugg.txt"]},
-                                cache_dir="test_hugg_en", split='train[:100%]',
-                                ignore_verifications=True)
-
-    # noise_fn.compute("Hello point. And she is. How is him? Sorry for that.")
-
-    tok_en = MBartTokenizer.from_pretrained("facebook/mbart-large-cc25", src_lang="en_XX")
-    t = tok_en("Hello sir... . I buy on amazon.com.")
-    tokens = tok_en.batch_decode(t.input_ids)
-
-    pre_train_ds = MBartPreTrainingDataset(pre_train_ds, tok_en, "en_XX")
-    #
-    mbart_config = MBartConfig(encoder_layers=6, decoder_layers=6,
-                               encoder_ffn_dim=2048, decoder_ffn_dim=2048,
-                               encoder_attention_heads=8, decoder_attention_heads=8,
-                               d_model=512, max_length=128, vocab_size=tok_en.vocab_size)
-    testing()
-    # train()
+    sentence = "We introduce how to convert the following three types of the language understanding task into the text-to-text format. Under this setting, the models should be fine-tuned only on English training data but evaluated on all target languages. Moreover, for each pretrained model, only one model is used for all languages rather than selecting fine-tuned models separately."
+    print(mask(noise_density=0.5, seed=85, src_tokens=sentence.split()))

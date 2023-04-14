@@ -29,15 +29,15 @@ def compute_bleu_metric(prediction: EvalPrediction):
 
 def run_server():
     model = MBartForConditionalGeneration.from_pretrained(
-        "/home/n.dallanoce/PyCharm/pretraining/weights/mbart_cc100_hilr/checkpoint-500000")
-    training_args = Seq2SeqTrainingArguments("/home/n.dallanoce/PyCharm/pretraining/weights/mbart_ft_fr-en_hilr",
+        "//home/n.dallanoce/PyCharm/pretraining/weights/mbart_cc100_enfr_es/checkpoint-500000")
+    training_args = Seq2SeqTrainingArguments("/home/n.dallanoce/PyCharm/pretraining/weights/mbart_ft_fr-en-es",
                                              overwrite_output_dir=True,
                                              label_names=['labels'],
                                              do_train=True,
                                              label_smoothing_factor=0,
                                              # warmup_steps=2500,
                                              optim="adamw_torch",
-                                             learning_rate=4e-5,
+                                             learning_rate=4e-4,
                                              # auto_find_batch_size=True,
                                              per_device_train_batch_size=128,
                                              gradient_accumulation_steps=1,
@@ -83,7 +83,7 @@ def run_local():
                                              label_smoothing_factor=0.1,
                                              warmup_steps=2500,
                                              optim="adamw_torch",
-                                             learning_rate=3e-5,
+                                             learning_rate=5e-5,
                                              # auto_find_batch_size=True,
                                              per_device_train_batch_size=2,
                                              gradient_accumulation_steps=1,
@@ -156,8 +156,12 @@ if __name__ == '__main__':
                                                   303987750, 304028810, 310067703, 310183397, 314725258, 323880921,
                                                   324665884})
 
-    eval_tokenizers: Dict[str, MBartTokenizer] = {"en_fr": tok_en_fr, "fr_en": tok_fr_en}
+    #eval_tokenizers: Dict[str, MBartTokenizer] = {"en_fr": tok_en_fr, "fr_en": tok_fr_en}
     val_ds_config = val_ds.config_name.replace("-", "_")  # works with wmt14 datasets
+    translation_ds_de = load_dataset("yhavinga/ccmatrix", "en-de",
+                                     cache_dir="/data/n.dallanoce/cc_en_de",
+                                     split=f"train[0:25000000]",
+                                     verification_mode='no_checks')
     trainer = MBartTrainer(model, training_args,
                            train_dataset=ConcatDataset([en_fr_ds, fr_en_ds]),
                            # eval_dataset={'bleu_en_fr': val_ds, 'bleu_fr_en': val_ds},  # , 'bleu_fr_en': val_ds},

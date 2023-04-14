@@ -64,21 +64,21 @@ class MT6PreTrainingDataset(Dataset):
         n_groups = 3
         text, targets = self.noise_fn.compute(text, index)
         while len(targets) < n_groups:  # only if return_list = True
-            new_index =  rng.integers(0, len(self.dataset) - 1, dtype=int)
+            new_index = rng.integers(0, len(self.dataset) - 1, dtype=int)
             text = self.dataset[new_index][field]
             text, targets = self.noise_fn.compute(text, new_index)
 
         input_tok = self.tokenizer(text, return_special_tokens_mask=False,
-                              add_special_tokens=True, truncation=True,
-                              max_length=self.input_max_length, padding='longest',
-                              return_tensors='pt')
+                                   add_special_tokens=True, truncation=True,
+                                   max_length=self.input_max_length, padding='longest',
+                                   return_tensors='pt')
         # while len(targets) < 3:
         #     targets.append("")
 
         out_tok = self.tokenizer(targets, return_special_tokens_mask=False,
-                            add_special_tokens=True, truncation=True,
-                            max_length=self.input_max_length // len(targets), padding='longest',
-                            return_tensors='pt', return_attention_mask=False, return_token_type_ids=False)
+                                 add_special_tokens=True, truncation=True,
+                                 max_length=self.input_max_length // len(targets), padding='longest',
+                                 return_tensors='pt', return_attention_mask=False, return_token_type_ids=False)
 
         input_ids: Tensor = input_tok['input_ids'].view(-1)
         att_mask: Tensor = input_tok['attention_mask'].view(-1)
