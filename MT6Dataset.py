@@ -79,7 +79,7 @@ class MT6Dataset(torch.utils.data.IterableDataset):
     @staticmethod
     def __tokenize_fn(examples: list, **kwargs):
         tokenizer = kwargs['tokenizer']
-        lang = kwargs['lang']
+        lang = kwargs['lang1']
         to_translate = [ex[lang] for ex in examples]
         tokenized_inputs = tokenizer(to_translate, truncation=True, padding='max_length', max_length=16,
                                      return_tensors='pt')
@@ -96,7 +96,7 @@ if __name__ == '__main__':
     ccmatrix = datasets.load_dataset("yhavinga/ccmatrix", "en-it", split='train', streaming=True)
     ccmatrix = ccmatrix.remove_columns(['id', 'score'])
     tokenizer = T5Tokenizer.from_pretrained("t5-small")
-    tokenized_ds = MT6Dataset.tokenize_dataset(ccmatrix, ['translation'], {'lang': 'en', 'tokenizer': tokenizer})
+    tokenized_ds = MT6Dataset.tokenize_dataset(ccmatrix, ['translation'], {'lang1': 'en', 'tokenizer': tokenizer})
     tokenized_ds: TorchIterableDataset = tokenized_ds.with_format('torch')
     mt6ds = MT6Dataset(tokenized_ds, tokenizer)
     # mt6ds.mask_dataset(tokenizer(["The cute dog walks in the park"], max_length=10, padding="max_length",

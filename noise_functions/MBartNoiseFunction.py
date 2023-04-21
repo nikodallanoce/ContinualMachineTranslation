@@ -32,7 +32,7 @@ class MBartNoiseFunction:
 
         # words: np.ndarray = np.array(permuted_sent.split(" "), dtype=np.str)
 
-        masked_words = " ".join(filter(None, permuted_sent))  # + " " + self.eos_sep + " " + self.lang
+        masked_words = " ".join(filter(None, permuted_sent))  # + " " + self.eos_sep + " " + self.lang1
         # lst = masked_words.split()
         # masked_w = lst.count("<mask>")
         # new_len = len(lst) - masked_w

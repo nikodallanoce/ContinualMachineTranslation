@@ -9,8 +9,8 @@ from transformers import AutoTokenizer, MBartTokenizerFast, MBartTokenizer
 
 def tokenize(examples: List[Dict[str, str]], **kwargs):
     tokenizer: MBartTokenizerFast = kwargs['tokenizer']
-    src_lang: str = kwargs['src_lang']
-    tgt_lang: str = kwargs['tgt_lang']
+    src_lang: str = kwargs['lang1']
+    tgt_lang: str = kwargs['lang2']
     batch_src: List[str] = [e[src_lang] for e in examples]
     batch_tgt: List[str] = [e[tgt_lang] for e in examples]
     # tokenize the batch of sentences
@@ -39,7 +39,7 @@ if __name__ == '__main__':
                                              tgt_lang=mbart_tgt)
 
     dataset = translation_ds.map(tokenize, batched=True, input_columns=['translation'], num_proc=128,
-                                 fn_kwargs={'tokenizer': tok, 'src_lang': src_lang, 'tgt_lang': tgt_lang})
+                                 fn_kwargs={'tokenizer': tok, 'lang1': src_lang, 'lang2': tgt_lang})
     dataset = dataset.with_format("pytorch", columns=['input_ids', 'labels'])
 
     num_unk_src = 0

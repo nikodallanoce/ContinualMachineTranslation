@@ -60,8 +60,8 @@ class MBartTrainer(Seq2SeqTrainer):
     #     eval_metrics: Dict[str, float] = dict()
     #     src_tgt_langs = metric_key_prefix.split("_")
     #     # bleu_score = compute_bleu(eval_dataset, self.model,
-    #     #                           src_lang=src_tgt_langs[2],
-    #     #                           tgt_lang=src_tgt_langs[3])["bleu"] * 100
+    #     #                           lang1=src_tgt_langs[2],
+    #     #                           lang2=src_tgt_langs[3])["bleu"] * 100
     #     bleu_score = 32
     #     eval_metrics[metric_key_prefix] = bleu_score
     #

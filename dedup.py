@@ -7,7 +7,7 @@ from tqdm import tqdm
 
 
 # def compute_collisions(dataset: datasets.Dataset,# Dict[str, List[Dict[str, str]]],
-#                        lang: str,
+#                        lang1: str,
 #                        i_s: int,
 #                        i_e:int,
 #                        pbar: tqdm):
@@ -19,7 +19,7 @@ from tqdm import tqdm
 #     # eta.set_postfix(thread=thr)
 #     for i in range(i_s, i_e):
 #         translation = dataset[i]['translation']
-#         sent = translation[lang]
+#         sent = translation[lang1]
 #         if hash(sent) in string_hashes:
 #             if sent == string_hashes[hash(sent)]:
 #                 collision_indexes.append(i_s + i)
@@ -70,26 +70,32 @@ if __name__ == '__main__':
     #                        cache_dir="D:\\datasets\\wmt14",
     #                        split=f"test",
     #                        ignore_verifications=True)
-    test_ds = load_dataset("wmt14", "fr-en",
-                           cache_dir="/data/n.dallanoce/wmt14",
+    lang1: str = "en"  # final
+    lang2: str = "de"
+    lang_for_duplicates: str = lang2
+    test_ds_name = "wmt14"
+    test_ds = load_dataset(test_ds_name, f"{lang2}-{lang1}",
+                           cache_dir=f"/data/n.dallanoce/{test_ds_name}",
                            split=f"test",
                            verification_mode='no_checks')
     string_hashes: Dict[int, str] = dict()
-
-    lang: str = "en"
     sent: str
     for translation in test_ds:
-        sent = translation['translation'][lang]
-        string_hashes[hash(sent)] = sent
+        sent = translation['translation'][lang_for_duplicates]
+        h_s = hash(sent)
+        if h_s in string_hashes and sent != string_hashes[h_s]:
+            raise Exception("Collision occur")
+        string_hashes[h_s] = sent
 
-    assert len(test_ds) == len(string_hashes)
+    # assert len(test_ds) == len(string_hashes)
 
-    train_ds = load_dataset("yhavinga/ccmatrix", "en-fr",
-                            cache_dir="/data/n.dallanoce/cc_en_fr",
+    train_ds_name = "yhavinga/ccmatrix"
+    train_ds = load_dataset(train_ds_name, f"{lang1}-{lang2}",
+                            cache_dir=f"/data/n.dallanoce/cc_{lang1}_{lang2}",
                             split=f"train",
                             verification_mode='no_checks')
 
-    # train_ds = load_dataset("cc100", lang=lang,
+    # train_ds = load_dataset("cc100", lang1=lang1,
     #                         cache_dir="/data/n.dallanoce/cc100/huggingface",
     #                         split=f"train[0:100%]",
     #                         verification_mode='no_checks')
@@ -98,7 +104,7 @@ if __name__ == '__main__':
     #                         cache_dir="D:\\datasets\\wmt14",
     #                         split=f"train",
     #                         verification_mode='no_checks')
-    #train_ds = test_ds
+    # train_ds = test_ds
 
     num_of_threads = 2 ** 18
     # executor = ThreadPoolExecutor(num_of_threads)
@@ -114,14 +120,15 @@ if __name__ == '__main__':
                 # results.append(
                 #     executor.submit(compute_collisions_monolingual, train_ds[i_s:i_e], "text", i_s, pbar,
                 #                     string_hashes))
-                results.append(executor.submit(compute_collisions, train_ds[i_s:i_e], lang, i_s, pbar))
+                results.append(executor.submit(compute_collisions, train_ds[i_s:i_e], lang_for_duplicates, i_s, pbar))
                 i_s, i_e, reminder = start_end_indexes(i_s, i_e, reminder)
 
             duplicates_idxs = []
             for res in results:
                 duplicates_idxs.extend(res.result())
 
-    with open("duplicated_text_idxs_en.txt", mode="w", encoding="UTF-8") as out_file:
+    with open(f"dup_idxs_of_ccmatrix_in_{test_ds_name}_{lang_for_duplicates}.txt", mode="w",
+              encoding="UTF-8") as out_file:
         ind_to_write = str(duplicates_idxs)
         out_file.write(ind_to_write + "\n")
         out_file.write(f"total number of indexes: {len(duplicates_idxs)}")

@@ -7,7 +7,7 @@ from transformers import MBartTokenizer
 
 def tokenize(examples: List[Dict[str, str]], **kwargs):
     tokenizer: MBartTokenizer = kwargs['tokenizer']
-    lang: str = kwargs['lang']
+    lang: str = kwargs['lang1']
     batch_src: List[str] = [e['en'] for e in examples]
     # tokenize the batch of sentences
     tokenized_src = tokenizer(batch_src, return_special_tokens_mask=False, truncation=True,
@@ -28,7 +28,7 @@ if __name__ == '__main__':
     tokenizer = MBartTokenizer.from_pretrained("facebook/mbart-large-cc25", src_lang="en_XX")
     #dataset = dataset["translation"]
     dataset = dataset.map(tokenize, batched=True, input_columns=['translation'],
-                          fn_kwargs={'tokenizer': tokenizer, 'lang': 'de'})
+                          fn_kwargs={'tokenizer': tokenizer, 'lang1': 'de'})
     dataset = dataset.remove_columns(['id', 'score', 'translation'])
     dataset = dataset.with_format('torch')
 

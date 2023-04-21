@@ -6,24 +6,24 @@ import numpy as np
 import torch
 from torch import Tensor
 from torch.utils.data import Dataset
-from transformers import PreTrainedTokenizer, MT5Tokenizer
+from transformers import MT5TokenizerFast
 
 from noise_functions.MT6NoiseFunction import MT6NoiseFunction
-from utilities.utility import prepare_ds_indexes, retrieve_lang
 
 
 class MT6PreTrainingDataset(Dataset):
 
-    def __init__(self, hugg_dataset: datasets.Dataset, tokenizer: MT5Tokenizer,
+    def __init__(self, hugg_dataset: datasets.Dataset, tokenizer: MT5TokenizerFast,
                  input_max_length=128, ds_field: str = "text",
                  noise_fn: MT6NoiseFunction = MT6NoiseFunction(return_list=True)):
         super().__init__()
         # self.ds_indexes: Dict[str, Tuple[int, int]] = prepare_ds_indexes(hugg_datasets)
         self.dataset: datasets.Dataset = hugg_dataset  # datasets.concatenate_datasets(list(hugg_datasets.values()))
-        self.tokenizer: MT5Tokenizer = tokenizer
+        self.tokenizer: MT5TokenizerFast = tokenizer
         self.input_max_length: int = input_max_length
         self.ds_field = ds_field
         self.noise_fn = noise_fn
+        self.ref_len: float = input_max_length - input_max_length * 0.4
 
     def __len__(self):
         return len(self.dataset)
@@ -61,13 +61,25 @@ class MT6PreTrainingDataset(Dataset):
             new_index = rng.integers(0, len(self.dataset) - 1, dtype=int)
             text = self.dataset[new_index][field]
 
-        n_groups = 3
-        text, targets = self.noise_fn.compute(text, index)
-        while len(targets) < n_groups:  # only if return_list = True
+        text = text.strip()
+        # text, targets = self.noise_fn.compute(text, index)
+        while len(text.split(" ")) < self.ref_len:
             new_index = rng.integers(0, len(self.dataset) - 1, dtype=int)
-            text = self.dataset[new_index][field]
-            text, targets = self.noise_fn.compute(text, new_index)
+            new_text = self.dataset[new_index][field]
+            text = text + " " + new_text.strip()
+        text, targets = self.noise_fn.compute(text, index)
 
+        tgt_len = self.input_max_length
+        if type(targets) == list:
+            if len(targets) != self.noise_fn.n_groups:
+                text = ""
+                while len(targets) != self.noise_fn.n_groups:
+                    new_index = rng.integers(0, len(self.dataset) - 1, dtype=int)
+                    new_text = self.dataset[new_index][field]
+                    text = text + " " + new_text.strip()
+                    src, targets = self.noise_fn.compute(text, index)
+                text = src
+            tgt_len = self.input_max_length // len(targets)
         input_tok = self.tokenizer(text, return_special_tokens_mask=False,
                                    add_special_tokens=True, truncation=True,
                                    max_length=self.input_max_length, padding='longest',
@@ -77,12 +89,14 @@ class MT6PreTrainingDataset(Dataset):
 
         out_tok = self.tokenizer(targets, return_special_tokens_mask=False,
                                  add_special_tokens=True, truncation=True,
-                                 max_length=self.input_max_length // len(targets), padding='longest',
+                                 max_length=tgt_len, padding='longest',
                                  return_tensors='pt', return_attention_mask=False, return_token_type_ids=False)
 
         input_ids: Tensor = input_tok['input_ids'].view(-1)
         att_mask: Tensor = input_tok['attention_mask'].view(-1)
         labels: Tensor = out_tok['input_ids']
+        if tgt_len == self.input_max_length:
+            labels = labels.view(-1)
         labels: Tensor = torch.where(labels == 0, -100, labels)
 
         outputs = {"input_ids": input_ids, "labels": labels, "attention_mask": att_mask}

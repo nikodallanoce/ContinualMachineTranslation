@@ -12,14 +12,14 @@ from transformers import PreTrainedTokenizer, MT5TokenizerFast
 import datasets
 
 from custom_datasets.MT6PreTrainingDataset import MT6PreTrainingDataset
-from noise_functions.MT6NoiseFunction import MT6NoiseFunction
+from noise_functions.MT5NoiseFunction import MT5NoiseFunction
 
 
 class MT6TranslationDataset(Dataset):
 
     def __init__(self, hugg_dataset: datasets.Dataset, tokenizer: MT5TokenizerFast, trg_lang: str,
                  src_lang: str = 'en', ds_field="translation", input_max_length: int = 128, min_words: int = 4,
-                 skip_rows: Set[int] = None, noise_fn: MT6NoiseFunction = MT6NoiseFunction(return_list=True)):
+                 skip_rows: Set[int] = None, noise_fn=MT5NoiseFunction()):
         super(MT6TranslationDataset, self).__init__()
 
         self.hugg_dataset: datasets.Dataset = hugg_dataset
@@ -30,7 +30,7 @@ class MT6TranslationDataset(Dataset):
         self.input_max_length: int = input_max_length
         self.min_words: int = min_words
         self.skip_rows: Set = set() if skip_rows is None else skip_rows
-        self.noise_fn: MT6NoiseFunction = noise_fn
+        self.noise_fn: MT5NoiseFunction = noise_fn
 
     def __len__(self):
         return len(self.hugg_dataset)
@@ -72,9 +72,9 @@ class MT6TranslationDataset(Dataset):
         return {'input_ids': inp_tok['input_ids'].view(-1), 'labels': labels,
                 'attention_mask': inp_tok['attention_mask'].view(-1)}
 
-    def translation_span_corruption(self, index: int, rng: Generator, src: str, trg: str) -> Tuple[str, List[str], str]:
+    def translation_span_corruption(self, index: int, rng: Generator, src: str, trg: str) -> Tuple[str, str]:
         if rng.random() < 0.5:
-            src, targets = self.noise_fn.compute(src, index)
+            src, tgt = self.noise_fn.compute(src, index)
         else:
             trg, targets = self.noise_fn.compute(trg, index)
         return src, targets, trg
@@ -103,14 +103,14 @@ if __name__ == '__main__':
                                 cache_dir="D:\\datasets\\test_hugg_en", split=f'train',
                                 verification_mode='no_checks')
 
-    #translation_ds = translation_ds.with_format("pt")
+    # translation_ds = translation_ds.with_format("pt")
 
     tok_en = MT5TokenizerFast.from_pretrained("nikodallanoce/mt5-cc4-vanilla-32k-5")
     # tok_fr = MT5TokenizerFast.from_pretrained("nikodallanoce/mt5-cc4-vanilla-32k-5")
 
     en_fr_ds = MT6TranslationDataset(translation_ds, tok_en, src_lang="en", trg_lang="fr")
     pre_train_ds = MT6PreTrainingDataset(pre_train_ds, tok_en)
-    # fr_en_ds = MT6TranslationDataset(translation_ds, tok_fr, src_lang="fr", trg_lang="en")
+    # fr_en_ds = MT6TranslationDataset(translation_ds, tok_fr, lang1="fr", trg_lang="en")
 
     for e in tqdm(DataLoader(ConcatDataset([en_fr_ds, pre_train_ds]), shuffle=True, batch_size=1024,
                              collate_fn=partial(collate_pad, pad_token_id=tok_en.pad_token_id))):

@@ -82,22 +82,22 @@ class MT6Trainer(Seq2SeqTrainer):
     #         #loss += super().compute_loss(model, inputs)
     #     return loss
 
-    def compute_loss(self, model, inputs, return_outputs=False):
-        # input_ids = inputs["input_ids"]
-        groups = inputs["labels"]
-        # att_mask = inputs["attention_mask"]
-        group_loss: List[Tensor] = []
-        loss_sum = 0
-        for i in range(groups.shape[1]):
-            group_i: Tensor = groups[:, i, :]
-            group_i: Tensor = group_i.contiguous()
-            # decoder_input_ids = self.shift_tokens_right(labels, model.config.pad_token_id)
-            # if int(labels[:, 0]) == model.config.eos_token_id:
-            #     continue
-            inputs["labels"] = group_i
-            inputs["decoder_input_ids"] = self.shift_right(group_i)
-            loss_i = super().compute_loss(model, inputs, return_outputs)
-            group_loss.append(loss_i)
-            #loss_sum += loss_i
-        loss = torch.sum(torch.stack(group_loss))
-        return loss
+    # def compute_loss(self, model, inputs, return_outputs=False):
+    #     # input_ids = inputs["input_ids"]
+    #     groups = inputs["labels"]
+    #     # att_mask = inputs["attention_mask"]
+    #     group_loss: List[Tensor] = []
+    #     loss_sum = 0
+    #     for i in range(groups.shape[1]):
+    #         group_i: Tensor = groups[:, i, :]
+    #         group_i: Tensor = group_i.contiguous()
+    #         # decoder_input_ids = self.shift_tokens_right(labels, model.config.pad_token_id)
+    #         # if int(labels[:, 0]) == model.config.eos_token_id:
+    #         #     continue
+    #         inputs["labels"] = group_i
+    #         inputs["decoder_input_ids"] = self.shift_right(group_i)
+    #         loss_i = super().compute_loss(model, inputs, return_outputs)
+    #         group_loss.append(loss_i)
+    #         #loss_sum += loss_i
+    #     loss = torch.sum(torch.stack(group_loss))
+    #     return loss

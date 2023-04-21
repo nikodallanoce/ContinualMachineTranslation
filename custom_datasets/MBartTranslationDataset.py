@@ -60,11 +60,11 @@ class MBartTranslationDataset(Dataset):
 #
 #     translation_ds = translation_ds.with_format("pt")
 #
-#     tok_en = MBartTokenizer.from_pretrained("facebook/mbart-large-cc25", src_lang="en_XX", tgt_lang="fr_XX")
-#     tok_fr = MBartTokenizer.from_pretrained("facebook/mbart-large-cc25", src_lang="fr_XX", tgt_lang="en_XX")
+#     tok_en = MBartTokenizer.from_pretrained("facebook/mbart-large-cc25", lang1="en_XX", lang2="fr_XX")
+#     tok_fr = MBartTokenizer.from_pretrained("facebook/mbart-large-cc25", lang1="fr_XX", lang2="en_XX")
 #
-#     en_fr_ds = MT6TranslationDataset(translation_ds, tok_en, src_lang="en", trg_lang="fr")
-#     fr_en_ds = MT6TranslationDataset(translation_ds, tok_fr, src_lang="fr", trg_lang="en")
+#     en_fr_ds = MT6TranslationDataset(translation_ds, tok_en, lang1="en", trg_lang="fr")
+#     fr_en_ds = MT6TranslationDataset(translation_ds, tok_fr, lang1="fr", trg_lang="en")
 #
 #     for e in tqdm(DataLoader(ConcatDataset([en_fr_ds, fr_en_ds]), shuffle=True)):
 #         pass

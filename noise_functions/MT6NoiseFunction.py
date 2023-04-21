@@ -4,7 +4,7 @@ import numpy as np
 
 class MT6NoiseFunction:
 
-    def __init__(self, n_groups: int = 3, noise_density: float = 0.5, return_list=False, span_length: int = 3):
+    def __init__(self, n_groups: int = 3, noise_density: float = 0.5, return_list=True, span_length: int = 3):
         self.n_groups: int = n_groups
         self.noise_density: float = noise_density
         self.return_list: bool = return_list
@@ -41,13 +41,6 @@ class MT6NoiseFunction:
             targets = " ".join(targets)
         return " ".join(filter(None, src_tokens)), targets
 
-    def compute_for_mt5(self, text: str, seed: int, noise_density: float = 0.15) -> Tuple[
-        str, str]:
-
-        src_tokens: List[str] = list(filter(None, text.split(" ")))
-        src_tokens, tgt_tokens, n_span = self.mask_src_trg_span_length(noise_density, seed, src_tokens)
-        return " ".join(filter(None, src_tokens)), " ".join(filter(None, tgt_tokens))
-
     @staticmethod
     def index_inside_bounds(index: int, span_len: int, bounds: List[Tuple[int, int]]):
         for b in bounds:
@@ -59,23 +52,29 @@ class MT6NoiseFunction:
         rng = np.random.default_rng(seed)
         span_bounds_idxs: List[Tuple[int, int]] = []
         tokens_to_mask = round(len(src_tokens) * noise_density)
-        #span_length, start_mask_idx = self.generate_index_and_span_len(rng, src_tokens)
-        #span_bounds_idxs.append((start_mask_idx, start_mask_idx + span_length))
-        #tokens_to_mask = tokens_to_mask - span_length
+        # span_length, start_mask_idx = self.generate_index_and_span_len(rng, src_tokens)
+        # span_bounds_idxs.append((start_mask_idx, start_mask_idx + span_length))
+        # tokens_to_mask = tokens_to_mask - span_length
+        patience: int = 0
         while tokens_to_mask > 0:
             span_length, start_mask_idx = self.generate_index_and_span_len(rng, src_tokens)
-            while self.index_inside_bounds(start_mask_idx, span_length, span_bounds_idxs) or span_length == 0:
+            while (self.index_inside_bounds(start_mask_idx, span_length,
+                                            span_bounds_idxs) or span_length == 0) and patience < 100:
                 span_length, start_mask_idx = self.generate_index_and_span_len(rng, src_tokens)
                 if span_length > tokens_to_mask:
                     span_length = tokens_to_mask
+                patience = patience + 1
             tokens_to_mask = tokens_to_mask - span_length
             span_bounds_idxs.append((start_mask_idx, start_mask_idx + span_length))
+            patience = 0
         span_bounds_idxs.sort(key=lambda x: x[0])
         return span_bounds_idxs
 
     def generate_index_and_span_len(self, rng: np.random.Generator, src_tokens: List[str]):
-        span_length = rng.poisson(3)
-        start_mask_idx = rng.integers(1, len(src_tokens) - span_length, endpoint=True)
+        span_length = rng.poisson(self.span_length)
+        if len(src_tokens) - span_length < 2:
+            span_length = 0
+        start_mask_idx = rng.integers(1, len(src_tokens) - span_length, endpoint=False)
         return span_length, start_mask_idx
 
     def mask_src_trg_span_length(self, noise_density: float, seed: int, src_tokens: List[str]):
@@ -97,7 +96,7 @@ class MT6NoiseFunction:
 
         # src, tgt = " ".join(filter(None, src_tokens)), " ".join(filter(None, tgt_tokens))
 
-        return src_tokens, tgt_tokens, n_span
+        return src_tokens, tgt_tokens, len(span_bounds_idx)
 
     def mask_src_trg(self, noise_density: float, seed: int, src_tokens: List[str]) -> Tuple[List[str], int]:
         rng = np.random.default_rng(seed)
@@ -140,11 +139,32 @@ class MaskTokenGenerator:
 
 
 if __name__ == '__main__':
+    import sys
+
+    sys.path.insert(0, '/home/n.dallanoce/PyCharm/pretraining')
     from transformers import MT5TokenizerFast
+    from datasets import load_dataset
+    from custom_datasets.MT6PreTrainingDataset import MT6PreTrainingDataset
+    from torch.utils.data import DataLoader
+    from utilities.utility import collate_pad
+    from functools import partial
+    from tqdm import tqdm
+
+    # pre_train_ds = load_dataset("cc100", lang="en",
+    #                             cache_dir="/data/n.dallanoce/cc100/huggingface",
+    #                             split=f"train[{4096}:{4096 * 2}]",
+    #                             verification_mode='no_checks')
+    pre_train_ds = load_dataset("cc100", lang="en",
+                                cache_dir="/data/n.dallanoce/cc100/huggingface",
+                                split=f"train[0:40000000]",
+                                verification_mode='no_checks')
 
     tok_en = MT5TokenizerFast.from_pretrained("nikodallanoce/mt5-cc4-vanilla-32k-5")
+    ds = MT6PreTrainingDataset(pre_train_ds, tok_en)
     original = "We introduce how to convert the following three types of the language understanding task into the text-to-text format. Under this setting, the models should be fine-tuned only on English training data but evaluated on all target languages. Moreover, for each pretrained model, only one model is used for all languages rather than selecting fine-tuned models separately."
-    src, trg = MT6NoiseFunction(return_list=True).compute_for_mt5(text=original, seed=85, noise_density=0.5)
+    # src, trg = MT6NoiseFunction(return_list=True, noise_density=0.5).compute(text=original, seed=85)
+    for e in tqdm(DataLoader(ds, batch_size=128, collate_fn=partial(collate_pad, pad_token_id=tok_en.pad_token_id), num_workers=16)):
+        pass
     # tokenized = tok_en(trg, add_special_tokens=True, max_length=16, padding="max_length", truncation=True)
     # lst = src.split()
     # masked_w = sum(1 for x in lst if "<extra_id" in x)
