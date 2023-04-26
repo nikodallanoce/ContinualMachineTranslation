@@ -1,69 +1,68 @@
 import torch
-from transformers import MBartTokenizer, MBartConfig
-from datasets import load_dataset
+from datasets import load_dataset, concatenate_datasets, interleave_datasets
+from datasets.combine import DatasetType
+from torch.utils.data import DataLoader, Dataset, IterableDataset, ConcatDataset, RandomSampler
 from tqdm import tqdm
-from torch.utils import data
-from typing import List
-def model_size(model):
-    param_size = 0
-    for param in model.parameters():
-        param_size += param.nelement() * param.element_size()
-    buffer_size = 0
-    for buffer in model.buffers():
-        buffer_size += buffer.nelement() * buffer.element_size()
+import os
 
-    size_all_mb = (param_size + buffer_size) / 1024 ** 2
-    return size_all_mb
+from iterable_datasets.IterMT6PreTrainingDataset import IterMT6PreTrainingDataset
+
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+from transformers import MBartTokenizerFast, MT5TokenizerFast
+from functools import partial
+from utilities.utility import collate_pad, collate_torch_iterable
+import custom_datasets.MBartPreTrainingDataset
+import custom_datasets.MT6PreTrainingDataset
 
 
-def batch_iterator(dataset, batch_size=10000):
-    for i in tqdm(range(0, len(dataset), batch_size)):
-        yield dataset[i: i + batch_size]
+def map_tokenize(batch, tokenizer: MBartTokenizerFast):
+    out_tok = tokenizer(batch, max_length=128, truncation=True, padding="longest")
+    return {'input_ids': out_tok['input_ids'], 'attention_mask': out_tok['attention_mask'],
+            'labels': out_tok['input_ids']}
 
 
-def tokenize(examples: List[str], **kwargs):
-    tokenizer: MBartTokenizer = kwargs['tokenizer']
-    mask_percentage = kwargs['mask_percentage']
-
-    # tokenize the batch of sentences
-    tokenized_inputs = tokenizer(examples, return_special_tokens_mask=False, truncation=True,
-                                 max_length=tokenizer.model_max_length // 8, padding='max_length', return_tensors='pt')
-
-    return {'input_ids': tokenized_inputs.data['input_ids']}
-
-
-# Press the green button in the gutter to run the script.
 if __name__ == '__main__':
-    print(torch.cuda.is_available())
+    loss_fn = torch.nn.CrossEntropyLoss(ignore_index=-100)
+    input = torch.randn(3, 5)
+    target = torch.empty(3, dtype=torch.long).fill_(-100)
+    output = loss_fn(input, target)
 
-    mbart_config = MBartConfig(encoder_layers=6, decoder_layers=6,
-                               encoder_ffn_dim=512, decoder_ffn_dim=512,
-                               encoder_attention_heads=8, decoder_attention_heads=8,
-                               d_model=512, max_position_embeddings=2048, max_length=512)
+    # tok_name = "nikodallanoce/mbart-cc4-vanilla-32k-5"
+    # tok_en = MBartTokenizerFast.from_pretrained(tok_name, src_lang="en_XX")
+    # tok_fr = MBartTokenizerFast.from_pretrained(tok_name, src_lang="fr_XX")
 
+    tok_en = MT5TokenizerFast.from_pretrained("nikodallanoce/mt5-cc4-vanilla-32k-5")
+    tok_fr = tok_en
 
-    # print('model size: {:.3f}MB'.format(model_size(model)))
+    en_mc4 = load_dataset("mc4", "en", split="train", streaming=True)
+    fr_mc4 = load_dataset("mc4", "fr", split="train", streaming=True)
+    en_mc4 = en_mc4.map(
+        partial(custom_datasets.MT6PreTrainingDataset.get_item_for_iterable, tokenizer=tok_en), batched=True,
+        batch_size=128,
+        remove_columns=['url', 'timestamp'],
+        input_columns=['text']).remove_columns(['text'])
+    fr_mc4 = fr_mc4.map(
+        partial(custom_datasets.MT6PreTrainingDataset.get_item_for_iterable, tokenizer=tok_fr), batched=True,
+        batch_size=128,
+        remove_columns=['url', 'timestamp'],
+        input_columns=['text'])
+    pre_ds = interleave_datasets([en_mc4, fr_mc4]).with_format("torch")
+    # ConcatDataset([en_mc4, fr_mc4])
+    en_fr_ds = load_dataset("yhavinga/ccmatrix", "en-fr",
+                            split="train",
+                            streaming=True)
+    en_fr_ds = en_fr_ds.map(
+        partial(custom_datasets.MT6PreTrainingDataset.get_item_for_iterable, tokenizer=tok_en,
+                has_translation_pairs=True), batched=True,
+        batch_size=128,
+        remove_columns=['id', 'score'],
+        input_columns=['translation']).remove_columns(['translation'])
 
-    dataset_europarl = load_dataset("g8a9/europarl_en-it", split='train', streaming=True)
-    dataset_europarl = dataset_europarl.remove_columns('Unnamed: 0')
-
-    # multiprocessing.cpu_count()
-    # print(f"The max length for the tokenizer is: {tokenizer.model_max_length}")
-
-    # preprocess dataset
-    tokenizer = MBartTokenizer.from_pretrained("facebook/mbart-large-cc25", src_lang="en_XX")
-    tok_ris = tokenizer("Hello! My name, is Jack. How are you?", max_length=20,
-                        padding='max_length', add_special_tokens=True)
-    tok = dataset_europarl.map(tokenize, batched=True,
-                               input_columns=['sent_en'], fn_kwargs={'tokenizer': tokenizer, 'mask_percentage': 0.3})
-    # tok = dataset_europarl.map(tokenize, batched=True, num_proc=1, batch_size=10000,
-    #                             input_columns=['sent_en'], fn_kwargs={'tokenizer': tokenizer, 'mask_percentage': 0.3})
-    tok = tok.remove_columns(['sent_en', 'sent_it'])
-    tok = tok.with_format('torch')
-    # dataset_europarl = load_dataset("yhavinga/ccmatrix", "en-nl", split='train', streaming=True)
-    # dataset_europarl = dataset_europarl.with_format("torch")
-    for e in torch.utils.data.DataLoader(tok, batch_size=2):
-        print()
-    #tok.save_to_disk("europarl_eng_tokenized")
-
-# See PyCharm help at https://www.jetbrains.com/help/pycharm/
+    n1 = next(iter(en_fr_ds))
+    n2 = next(iter(en_mc4))
+    #pre_train_ds = interleave_datasets([en_mc4, en_fr_ds]).with_format("torch")
+    for e in tqdm(
+            DataLoader(IterMT6PreTrainingDataset([en_mc4, en_fr_ds]), batch_size=4,
+                       collate_fn=partial(collate_torch_iterable, pad_token_id=tok_en.pad_token_id),
+                       pin_memory=True)):
+        pass

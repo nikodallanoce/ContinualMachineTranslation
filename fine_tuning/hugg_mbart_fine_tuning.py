@@ -12,7 +12,7 @@ from custom_datasets.MBartTranslationDataset import MBartTranslationDataset
 from trainers.MBartTrainer import MBartTrainer
 import os
 
-project_name = "mbart_ft_en-fr"
+project_name = "streaming_mbart_ft_en-fr_2"
 os.environ["WANDB_PROJECT"] = project_name
 
 # save your trained model checkpoint to wandb
@@ -38,15 +38,15 @@ def compute_bleu_metric(prediction: EvalPrediction):
 
 def run_server():
     model = MBartForConditionalGeneration.from_pretrained(
-        "/home/n.dallanoce/PyCharm/pretraining/weights/mbart_pre_en-fr/checkpoint-100000")
+        "/home/n.dallanoce/PyCharm/pretraining/weights/streaming_mbart_pre_en-fr/checkpoint-100000")
     training_args = Seq2SeqTrainingArguments(f"/home/n.dallanoce/PyCharm/pretraining/weights/{project_name}",
-                                             overwrite_output_dir=True,
+                                             overwrite_output_dir=False,
                                              label_names=['labels'],
                                              do_train=True,
                                              label_smoothing_factor=0,
                                              # warmup_steps=2500,
                                              optim="adamw_torch",
-                                             learning_rate=8e-4,
+                                             learning_rate=5e-4,
                                              # auto_find_batch_size=True,
                                              per_device_train_batch_size=128,
                                              gradient_accumulation_steps=1,
@@ -64,7 +64,7 @@ def run_server():
                                              dataloader_pin_memory=True,
                                              dataloader_num_workers=6,
                                              # prediction_loss_only=True,
-                                             save_total_limit=2,
+                                             save_total_limit=1,
                                              metric_for_best_model="bleu_en_fr",
                                              greater_is_better=True,
                                              report_to=["wandb"],
@@ -206,7 +206,9 @@ if __name__ == '__main__':
     trainer = MBartTrainer(model, training_args,
                            train_dataset=ConcatDataset([en_fr_ds, fr_en_ds]),
                            # eval_dataset={'bleu_en_fr': val_ds, 'bleu_fr_en': val_ds},  # , 'bleu_fr_en': val_ds},
-                           eval_dataset={f"{val_ds_config_en_fr}": val_ds_fr_en}
+                           eval_dataset={f"{val_ds_config_en_fr}": val_ds_fr_en,
+                                         #f"{val_ds_config_en_de}": val_ds_de_en
+                                         }
                            # optimizers=(optimizer, lr_scheduler)
                            )
 

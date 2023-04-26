@@ -34,6 +34,32 @@ def collate_pad(batch: List[Dict[str, Tensor]], pad_token_id: int) -> Dict[str, 
     return {"input_ids": padded_inp, "labels": padded_lab, "attention_mask": padded_att}
 
 
+def collate_torch_iterable(batch_list, pad_token_id: int, num_workers: int = 1):
+    from concurrent.futures import ThreadPoolExecutor
+    batch_size, batch_reminder = divmod(len(batch_list), num_workers)
+    results = []
+    i_start = 0
+    i_end = 0
+    with ThreadPoolExecutor(num_workers) as executor:
+        for i in range(num_workers):
+            i_end = i_end + batch_size + int(batch_reminder > 0)
+            batch_reminder = batch_reminder - 1
+            results.append(executor.submit(parallel_copy, batch_list=batch_list[i_start:i_end]))
+            i_start = i_end
+    batch_list = []
+    for res in results:
+        batch_list.extend(res.result())
+    return collate_pad(batch_list, pad_token_id)
+
+
+def parallel_copy(batch_list: List):
+    for batch in batch_list:
+        batch['input_ids'] = torch.tensor(batch['input_ids'])
+        batch['attention_mask'] = torch.tensor(batch['attention_mask'])
+        batch['labels'] = torch.tensor(batch['labels'])
+    return batch_list
+
+
 def retrieve_lang(ds_indexes: Dict[str, Tuple[int, int]], index: int) -> Tuple[str, int, int]:
     lang: str
     for lang in ds_indexes:

@@ -1,6 +1,7 @@
 from functools import partial
 from typing import Union, Optional, Callable, Dict, List, Tuple, Any
 
+import datasets
 import torch
 from datasets import load_dataset
 from torch import nn, Tensor
@@ -11,7 +12,7 @@ from transformers import Trainer, PreTrainedModel, TrainingArguments, DataCollat
 from transformers.utils import is_torch_fx_proxy
 
 from custom_datasets.MT6PreTrainingDataset import MT6PreTrainingDataset
-from utilities.utility import collate_pad
+from utilities.utility import collate_pad, collate_torch_iterable
 
 
 class MT6Trainer(Seq2SeqTrainer):
@@ -28,13 +29,25 @@ class MT6Trainer(Seq2SeqTrainer):
                          compute_metrics, callbacks, optimizers, preprocess_logits_for_metrics)
 
     def get_train_dataloader(self) -> DataLoader:
-        return DataLoader(self.train_dataset,
-                          collate_fn=partial(collate_pad, pad_token_id=self.model.config.pad_token_id),
-                          batch_size=self.args.per_device_train_batch_size,
-                          drop_last=self.args.dataloader_drop_last,
-                          num_workers=self.args.dataloader_num_workers,
-                          pin_memory=self.args.dataloader_pin_memory,
-                          shuffle=True)
+
+        data_loader: DataLoader
+
+        if type(self.train_dataset) == datasets.iterable_dataset.IterableDataset:
+            data_loader = DataLoader(self.train_dataset,
+                                     collate_fn=partial(collate_torch_iterable,
+                                                        pad_token_id=self.model.config.pad_token_id, num_workers = 4),
+                                     batch_size=self.args.per_device_train_batch_size,
+                                     pin_memory=self.args.dataloader_pin_memory)
+
+        else:
+            data_loader = DataLoader(self.train_dataset,
+                                     collate_fn=partial(collate_pad, pad_token_id=self.model.config.pad_token_id),
+                                     batch_size=self.args.per_device_train_batch_size,
+                                     drop_last=self.args.dataloader_drop_last,
+                                     num_workers=self.args.dataloader_num_workers,
+                                     pin_memory=self.args.dataloader_pin_memory,
+                                     shuffle=True)
+        return data_loader
 
     def compute_loss_mt5(self, model, inputs, return_outputs=False):
         if "labels" in inputs and self.label_smoother is not None:

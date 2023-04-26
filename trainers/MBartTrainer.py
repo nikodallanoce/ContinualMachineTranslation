@@ -1,10 +1,11 @@
 from functools import partial
 from typing import Union, Optional, Callable, Dict, List, Tuple, Any
 
+import datasets
 import numpy as np
 from transformers.trainer_utils import EvalLoopOutput
 
-from utilities.utility import collate_pad
+from utilities.utility import collate_pad, collate_torch_iterable
 import torch
 
 from torch import nn, Tensor
@@ -68,12 +69,22 @@ class MBartTrainer(Seq2SeqTrainer):
     #     return super().evaluation_loop(dataloader, description, prediction_loss_only, ignore_keys, metric_key_prefix)
 
     def get_train_dataloader(self) -> DataLoader:
-        return DataLoader(self.train_dataset,
-                          collate_fn=partial(collate_pad, pad_token_id=self.model.config.pad_token_id),
-                          batch_size=self.args.per_device_train_batch_size,
-                          drop_last=self.args.dataloader_drop_last,
-                          num_workers=self.args.dataloader_num_workers, pin_memory=self.args.dataloader_pin_memory,
-                          shuffle=True)
+        data_loader: DataLoader
+        if type(self.train_dataset) == datasets.iterable_dataset.IterableDataset:
+            data_loader = DataLoader(self.train_dataset,
+                                     collate_fn=partial(collate_torch_iterable,
+                                                        pad_token_id=self.model.config.pad_token_id),
+                                     batch_size=self.args.per_device_train_batch_size,
+                                     pin_memory=self.args.dataloader_pin_memory)
+        else:
+            data_loader = DataLoader(self.train_dataset,
+                                     collate_fn=partial(collate_pad, pad_token_id=self.model.config.pad_token_id),
+                                     batch_size=self.args.per_device_train_batch_size,
+                                     drop_last=self.args.dataloader_drop_last,
+                                     num_workers=self.args.dataloader_num_workers,
+                                     pin_memory=self.args.dataloader_pin_memory,
+                                     shuffle=True)
+        return data_loader
 
     def compute_loss(self, model, inputs, return_outputs=False):
         if "labels" in inputs:
