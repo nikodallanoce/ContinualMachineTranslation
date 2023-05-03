@@ -4,6 +4,7 @@ from typing import Optional, Tuple, Union, List
 import torch
 from torch import nn, Tensor
 from torch.nn import CrossEntropyLoss
+from torch.nn.functional import pad
 from transformers import MT5ForConditionalGeneration, MT5Config, T5Config
 from tqdm import tqdm
 from transformers.modeling_outputs import Seq2SeqLMOutput, BaseModelOutput
@@ -49,26 +50,12 @@ class MT6(MT5ForConditionalGeneration):
                 warnings.warn(__HEAD_MASK_WARNING_MSG, FutureWarning)
                 decoder_head_mask = head_mask
 
-        # Encode if needed (training, first prediction pass)
-        if encoder_outputs is None:
-            # Convert encoder inputs in embeddings if needed
-            encoder_outputs = self.encoder(
-                input_ids=input_ids,
-                attention_mask=attention_mask,
-                inputs_embeds=inputs_embeds,
-                head_mask=head_mask,
-                output_attentions=output_attentions,
-                output_hidden_states=output_hidden_states,
-                return_dict=return_dict,
-            )
-        elif return_dict and not isinstance(encoder_outputs, BaseModelOutput):
-            encoder_outputs = BaseModelOutput(
-                last_hidden_state=encoder_outputs[0],
-                hidden_states=encoder_outputs[1] if len(encoder_outputs) > 1 else None,
-                attentions=encoder_outputs[2] if len(encoder_outputs) > 2 else None,
-            )
+        #group_lab, transl_lab = self.create_groups(labels, attention_mask)
 
-        hidden_states = encoder_outputs[0]
+        # Encode if needed (training, first prediction pass)
+        encoder_outputs, hidden_states = self.encoder_forward(attention_mask, encoder_outputs, head_mask, input_ids,
+                                                              inputs_embeds, output_attentions, output_hidden_states,
+                                                              return_dict)
 
         if self.model_parallel:
             torch.cuda.set_device(self.decoder.first_device)
@@ -76,10 +63,10 @@ class MT6(MT5ForConditionalGeneration):
         pnat_labels = False if labels is None else (labels.ndim == 3 and labels.shape[1] > 1)
         decoder_iterations = labels.shape[1] if pnat_labels else 1
 
-        lm_logits: torch.Tensor = torch.zeros(1)
-        decoder_outputs: torch.Tensor = torch.zeros(1)
+        lm_logits, decoder_outputs = None, None
 
         total_loss = None if (labels is None) else 0
+
         for i in range(decoder_iterations):
             label = labels[:, i, :].contiguous() if pnat_labels else labels.contiguous()
             decoder_attention_mask, decoder_input_ids, decoder_inputs_embeds = None, None, None
@@ -95,7 +82,8 @@ class MT6(MT5ForConditionalGeneration):
                                                               decoder_attention_mask,
                                                               decoder_head_mask, decoder_input_ids,
                                                               decoder_inputs_embeds,
-                                                              hidden_states, output_attentions, output_hidden_states,
+                                                              hidden_states, output_attentions,
+                                                              output_hidden_states,
                                                               past_key_values, return_dict, use_cache)
 
             loss = self.compute_loss(lm_logits, label)
@@ -117,6 +105,28 @@ class MT6(MT5ForConditionalGeneration):
             encoder_hidden_states=encoder_outputs.hidden_states,
             encoder_attentions=encoder_outputs.attentions,
         )
+
+    def encoder_forward(self, attention_mask, encoder_outputs, head_mask, input_ids, inputs_embeds, output_attentions,
+                        output_hidden_states, return_dict):
+        if encoder_outputs is None:
+            # Convert encoder inputs in embeddings if needed
+            encoder_outputs = self.encoder(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                inputs_embeds=inputs_embeds,
+                head_mask=head_mask,
+                output_attentions=output_attentions,
+                output_hidden_states=output_hidden_states,
+                return_dict=return_dict,
+            )
+        elif return_dict and not isinstance(encoder_outputs, BaseModelOutput):
+            encoder_outputs = BaseModelOutput(
+                last_hidden_state=encoder_outputs[0],
+                hidden_states=encoder_outputs[1] if len(encoder_outputs) > 1 else None,
+                attentions=encoder_outputs[2] if len(encoder_outputs) > 2 else None,
+            )
+        hidden_states = encoder_outputs[0]
+        return encoder_outputs, hidden_states
 
     def compute_loss(self, lm_logits, labels):
         loss = None
@@ -201,3 +211,26 @@ class MT6(MT5ForConditionalGeneration):
             "cross_attn_head_mask": cross_attn_head_mask,
             "use_cache": use_cache,
         }
+
+    def create_groups(self, labels: torch.Tensor, attention_mask: torch.Tensor):
+        groups = []
+        transl = []
+        start_i = 0
+        for r in range(labels.shape[0]):
+            labels_row = labels[r, :]
+            groups_row = []
+            for i in range(0, len(labels_row) - 1):
+                if 3 <= int(labels_row[i]) <= 102 and labels_row[i] == labels_row[i + 1]:
+                    groups_row.append(labels_row[start_i: i + 1])
+                    start_i = i + 1
+            if start_i < len(labels_row):
+                groups_row.append([labels_row[start_i:]])
+            if len(groups_row) == 0:
+                transl.append(labels_row)
+            else:
+                max_len_labels = max([x.shape[0] for x in groups_row])
+                for i in range(len(groups_row)):
+                    t: Tensor = groups_row[i]
+                    groups_row[i] = pad(t, pad=(0, max_len_labels - t.shape[-1]), mode="constant", value=-100)
+                groups.append(torch.stack(groups_row))
+        return groups, transl

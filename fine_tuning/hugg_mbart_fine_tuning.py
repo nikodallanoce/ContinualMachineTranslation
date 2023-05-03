@@ -12,7 +12,7 @@ from custom_datasets.MBartTranslationDataset import MBartTranslationDataset
 from trainers.MBartTrainer import MBartTrainer
 import os
 
-project_name = "streaming_mbart_ft_en-fr_2"
+project_name = "mbart_ft_en-es(Mf3)"
 os.environ["WANDB_PROJECT"] = project_name
 
 # save your trained model checkpoint to wandb
@@ -38,7 +38,7 @@ def compute_bleu_metric(prediction: EvalPrediction):
 
 def run_server():
     model = MBartForConditionalGeneration.from_pretrained(
-        "/home/n.dallanoce/PyCharm/pretraining/weights/streaming_mbart_pre_en-fr/checkpoint-100000")
+        "/home/n.dallanoce/PyCharm/pretraining/weights/mbart_pre_en-fr_de_es/checkpoint-100000")
     training_args = Seq2SeqTrainingArguments(f"/home/n.dallanoce/PyCharm/pretraining/weights/{project_name}",
                                              overwrite_output_dir=False,
                                              label_names=['labels'],
@@ -46,7 +46,7 @@ def run_server():
                                              label_smoothing_factor=0,
                                              # warmup_steps=2500,
                                              optim="adamw_torch",
-                                             learning_rate=5e-4,
+                                             learning_rate=6e-4,
                                              # auto_find_batch_size=True,
                                              per_device_train_batch_size=128,
                                              gradient_accumulation_steps=1,
@@ -65,7 +65,7 @@ def run_server():
                                              dataloader_num_workers=6,
                                              # prediction_loss_only=True,
                                              save_total_limit=1,
-                                             metric_for_best_model="bleu_en_fr",
+                                             metric_for_best_model="bleu_en_es",
                                              greater_is_better=True,
                                              report_to=["wandb"],
                                              ignore_data_skip=True
@@ -192,22 +192,60 @@ if __name__ == '__main__':
                                                   111265110, 145839309, 164197978, 185766813, 188391705, 198131661,
                                                   198435949, 199964247, 230948265, 240673484, 245361151, 246664703})
 
+    translation_ds_en_es = load_dataset("yhavinga/ccmatrix", "en-es",
+                                        cache_dir="/data/n.dallanoce/cc_en_es",
+                                        split=f"train[0:25000000]",
+                                        verification_mode='no_checks')
+
+    tok_en_es = AutoTokenizer.from_pretrained(tok_name, src_lang="en_XX", tgt_lang="es_XX")
+    tok_es_en = AutoTokenizer.from_pretrained(tok_name, src_lang="es_XX", tgt_lang="en_XX")
+
+    en_es_ds = MBartTranslationDataset(translation_ds_en_es, tok_en_es, src_lang="en", trg_lang="es",
+                                       input_max_length=128,
+                                       skip_rows={104162920, 201875059, 220054035, 239139109, 242048881, 250889199,
+                                                  299111881, 300507236, 357223245})
+    es_en_ds = MBartTranslationDataset(translation_ds_en_es, tok_es_en, src_lang="es", trg_lang="en",
+                                       input_max_length=128,
+                                       skip_rows={6751585, 7725692, 35698791, 43267448, 48075653, 48925282, 48925283,
+                                                  53971646, 55073237, 56061226, 59861190, 63114112, 80366657, 80902620,
+                                                  86295984, 87272571, 111795284, 113916617, 118570344, 119519063,
+                                                  120600774, 129587251, 130850605, 136272300, 136519043, 136733349,
+                                                  137378072, 137491231, 137665670, 143721844, 145405838, 146284528,
+                                                  146621153, 153890220, 155856369, 159312479, 160583224, 163400236,
+                                                  167062018, 167230158, 168709714, 171236351, 173926019, 175953391,
+                                                  180093066, 181892264, 188671101, 190817212, 191197133, 191440526,
+                                                  193089123, 193231113, 202625957, 218523240, 219695892, 225112141,
+                                                  227156035, 231918342, 233796239, 233865889, 237259151, 274202045,
+                                                  278337171, 288838952, 289266873, 290450151, 291301513, 293807105,
+                                                  294314852, 296624934, 297053788, 303558652, 317079342, 318616807,
+                                                  322993811, 326540772, 329582867, 341969381, 349023337, 352305431,
+                                                  354125230, 356161656, 357435039, 364171762, 378343556, 380637241,
+                                                  393342927, 398415139, 399539622, 404908528, 407859230})
+
     # eval_tokenizers: Dict[str, MBartTokenizer] = {"en_fr": tok_en_fr, "fr_en": tok_fr_en}
     val_ds_de_en = load_dataset("wmt14", "de-en",
                                 cache_dir="/data/n.dallanoce/wmt14",
                                 split=f"validation",
                                 verification_mode='no_checks')
+
+    val_ds_name = "nikodallanoce/wmt14"
+    val_ds_es_en = load_dataset(val_ds_name, "es-en",
+                                cache_dir="/data/n.dallanoce/wmt14",
+                                split=f"validation",
+                                verification_mode='no_checks', use_auth_token=True)
     val_ds_config_en_fr = val_ds_fr_en.config_name.replace("-", "_")  # works with wmt14 datasets
     val_ds_config_en_de = val_ds_de_en.config_name.replace("-", "_")
-    translation_ds_de = load_dataset("yhavinga/ccmatrix", "en-de",
-                                     cache_dir="/data/n.dallanoce/cc_en_de",
+    val_ds_config_en_es = val_ds_es_en.config_name.replace("-", "_")
+    tgt_lang = "es"
+    translation_ds_de = load_dataset("yhavinga/ccmatrix", f"en-{tgt_lang}",
+                                     cache_dir=f"/data/n.dallanoce/cc_en_{tgt_lang}",
                                      split=f"train[0:25000000]",
                                      verification_mode='no_checks')
     trainer = MBartTrainer(model, training_args,
-                           train_dataset=ConcatDataset([en_fr_ds, fr_en_ds]),
+                           train_dataset=ConcatDataset([en_es_ds, es_en_ds]),
                            # eval_dataset={'bleu_en_fr': val_ds, 'bleu_fr_en': val_ds},  # , 'bleu_fr_en': val_ds},
-                           eval_dataset={f"{val_ds_config_en_fr}": val_ds_fr_en,
-                                         #f"{val_ds_config_en_de}": val_ds_de_en
+                           eval_dataset={f"{val_ds_config_en_es}": val_ds_es_en,
+                                         # f"{val_ds_config_en_de}": val_ds_de_en
                                          }
                            # optimizers=(optimizer, lr_scheduler)
                            )

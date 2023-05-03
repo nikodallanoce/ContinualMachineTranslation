@@ -71,13 +71,15 @@ if __name__ == '__main__':
     #                        split=f"test",
     #                        ignore_verifications=True)
     lang1: str = "en"  # final
-    lang2: str = "de"
+    lang2: str = "es"
     lang_for_duplicates: str = lang2
+
     test_ds_name = "wmt14"
-    test_ds = load_dataset(test_ds_name, f"{lang2}-{lang1}",
+    test_ds = load_dataset("nikodallanoce/" + test_ds_name, f"{lang2}-{lang1}",
                            cache_dir=f"/data/n.dallanoce/{test_ds_name}",
-                           split=f"test",
-                           verification_mode='no_checks')
+                           split=f"validation",
+                           verification_mode='no_checks',
+                           use_auth_token=True)
     string_hashes: Dict[int, str] = dict()
     sent: str
     for translation in test_ds:
@@ -127,7 +129,7 @@ if __name__ == '__main__':
             for res in results:
                 duplicates_idxs.extend(res.result())
 
-    with open(f"dup_idxs_of_ccmatrix_in_{test_ds_name}_{lang_for_duplicates}.txt", mode="w",
+    with open(f"dup_idxs_of_ccmatrix_in_{test_ds_name}_{test_ds.config_name}_({lang_for_duplicates}).txt", mode="w",
               encoding="UTF-8") as out_file:
         ind_to_write = str(duplicates_idxs)
         out_file.write(ind_to_write + "\n")

@@ -6,13 +6,13 @@ import torch
 from datasets import load_dataset
 from torch import nn, Tensor
 from torch.nn.utils.rnn import pad_sequence
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, IterableDataset
 from transformers import Trainer, PreTrainedModel, TrainingArguments, DataCollator, PreTrainedTokenizerBase, \
     EvalPrediction, TrainerCallback, Seq2SeqTrainer, MT5Tokenizer
 from transformers.utils import is_torch_fx_proxy
 
 from custom_datasets.MT6PreTrainingDataset import MT6PreTrainingDataset
-from utilities.utility import collate_pad, collate_torch_iterable
+from utilities.utility import collate_pad, collate_torch_iterable, collate_pad_mt6
 
 
 class MT6Trainer(Seq2SeqTrainer):
@@ -32,10 +32,11 @@ class MT6Trainer(Seq2SeqTrainer):
 
         data_loader: DataLoader
 
-        if type(self.train_dataset) == datasets.iterable_dataset.IterableDataset:
+        if type(self.train_dataset) == datasets.iterable_dataset.IterableDataset or isinstance(self.train_dataset,
+                                                                                               IterableDataset):
             data_loader = DataLoader(self.train_dataset,
-                                     collate_fn=partial(collate_torch_iterable,
-                                                        pad_token_id=self.model.config.pad_token_id, num_workers = 4),
+                                     collate_fn=partial(collate_pad_mt6,
+                                                        pad_token_id=self.model.config.pad_token_id, num_workers=1),
                                      batch_size=self.args.per_device_train_batch_size,
                                      pin_memory=self.args.dataloader_pin_memory)
 
@@ -82,6 +83,21 @@ class MT6Trainer(Seq2SeqTrainer):
     def evaluate(self, eval_dataset: Optional[Dataset] = None, ignore_keys: Optional[List[str]] = None,
                  metric_key_prefix: str = "eval", **gen_kwargs) -> Dict[str, float]:
         return super().evaluate(eval_dataset, ignore_keys, metric_key_prefix, **gen_kwargs)
+
+    def compute_loss(self, model, inputs, return_outputs=False):
+        total_loss = []
+        inputs: List[Dict[str, Tensor]]
+        for inp in inputs:
+            label_key = list(inp.keys())[1]
+            dict_inp = {'input_ids': inp['input_ids'], 'attention_mask': inp['attention_mask'],
+                        'labels': inp[label_key]}
+            # loss = super().compute_loss(model, dict_inp, return_outputs)
+            outputs = model(**dict_inp)
+            loss = outputs["loss"] if isinstance(outputs, dict) else outputs[0]
+            total_loss.append(loss)
+        stack_losses = torch.stack(total_loss)
+        loss = torch.sum(stack_losses, dim=0)
+        return loss
 
     # def training_step(self, model: nn.Module, inputs: Dict[str, Union[torch.Tensor, Any]]) -> torch.Tensor:
     #     targets = inputs["labels"]

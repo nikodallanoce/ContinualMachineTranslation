@@ -4,10 +4,11 @@ import torch.nn
 from datasets import load_dataset
 import transformers
 from transformers import Seq2SeqTrainingArguments, MT5ForConditionalGeneration, MT5Config, MT5TokenizerFast
-
+from MT6TokenizerFast import MT6TokenizerFast
 import sys
 
 sys.path.insert(0, '/home/n.dallanoce/PyCharm/pretraining')
+from iterable_datasets.IterMT6PreTrainingDataset import IterMT6PreTrainingDataset
 from MT6 import MT6
 from noise_functions.MT5NoiseFunction import MT5NoiseFunction
 from noise_functions.MT6NoiseFunction import MT6NoiseFunction
@@ -15,8 +16,8 @@ from custom_datasets.MT6PreTrainingDataset import MT6PreTrainingDataset, get_ite
 from trainers.MT6Trainer import MT6Trainer
 import os
 
-# os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"  # see issue #152
-# os.environ["CUDA_VISIBLE_DEVICES"] = "1,0"
+os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"  # see issue #152
+os.environ["CUDA_VISIBLE_DEVICES"] = "1,0"
 project_name = "stream_mt6_tests"
 os.environ["WANDB_PROJECT"] = project_name
 
@@ -62,11 +63,11 @@ def run_local():
 def run_server():
     training_args = Seq2SeqTrainingArguments(f"/home/n.dallanoce/PyCharm/pretraining/weights/{project_name}",
                                              overwrite_output_dir=True,
-                                             label_names=['labels'],
+                                             # label_names=['labels_pnat', 'labels_transl'],
                                              do_train=True,
-                                             per_device_train_batch_size=128,
+                                             per_device_train_batch_size=2,
                                              gradient_accumulation_steps=1,
-                                             #num_train_epochs=1,
+                                             # num_train_epochs=1,
                                              optim="adamw_torch",
                                              learning_rate=1e-4,
                                              lr_scheduler_type="linear",
@@ -101,7 +102,9 @@ if __name__ == '__main__':
 
     # special_tokens = ["en_XX", "de_DE", "es_XX", "fr_XX"]
     # tok_en = MT5Tokenizer.from_pretrained("google/mt5-base", additional_special_tokens=special_tokens)
-    tok_en = MT5TokenizerFast.from_pretrained("nikodallanoce/mt5-cc4-vanilla-32k-5")
+    tok_en = MT6TokenizerFast.from_pretrained("nikodallanoce/mt5-cc4-vanilla-32k-5", src_lang="en_XX")
+    tok_en_fr = MT6TokenizerFast.from_pretrained("nikodallanoce/mt5-cc4-vanilla-32k-5", src_lang="en_XX",
+                                                 tgt_lang="fr_XX")
     ris = tok_en("<extra_id_0> <extra_id_1> <extra_id_3> en_XX")
 
     # model = MT5ForConditionalGeneration(
@@ -113,11 +116,24 @@ if __name__ == '__main__':
 
     # pre_train_ds = MT6PreTrainingDataset(pre_train_ds, tok_en, noise_fn=MT5NoiseFunction())
     en_mc4 = load_dataset("mc4", "en", split="train", streaming=True)
-    en_mc4 = en_mc4.map(partial(get_item_for_iterable, tokenizer=tok_en, noise_fn=MT6NoiseFunction()),
-                        input_columns=['text'], batched=True,
-                        batch_size=256)
+    en_mc4 = en_mc4.map(partial(get_item_for_iterable, tokenizer=tok_en, noise_fn=MT6NoiseFunction(return_list=True)),
+                        input_columns=['text'], batched=True, batch_size=128,
+                        remove_columns=['url', 'timestamp']).remove_columns(['text'])
+
+    en_fr_ds = load_dataset("yhavinga/ccmatrix", "en-fr",
+                            split="train",
+                            streaming=True)
+    en_fr_ds = en_fr_ds.map(
+        partial(get_item_for_iterable, tokenizer=tok_en_fr,
+                has_translation_pairs=True), batched=True,
+        batch_size=128,
+        remove_columns=['id', 'score'],
+        input_columns=['translation']).remove_columns(['translation'])
+
+    train_ds = IterMT6PreTrainingDataset([en_mc4, en_fr_ds])
+
     trainer = MT6Trainer(model, training_args,
-                         train_dataset=en_mc4,
+                         train_dataset=train_ds,
                          # optimizers=(optimizer, lr_scheduler)
                          )
     trainer.train(resume_from_checkpoint=False)

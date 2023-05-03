@@ -7,14 +7,29 @@ from torch.nn.utils.rnn import pad_sequence
 from torch.nn.functional import pad
 
 
-def collate_pad(batch: List[Dict[str, Tensor]], pad_token_id: int) -> Dict[str, Tensor]:
+def collate_pad_mt6(batch: List[Dict[str, Tensor]], pad_token_id: int, num_workers: int = 1):
+    batch_pnat_lst: List[Dict[str, Tensor]] = []
+    batch_transl_lst: List[Dict[str, Tensor]] = []
+    elem: Dict[str, Tensor]
+    for elem in batch:
+        if "labels_pnat" in elem:
+            batch_pnat_lst.append(elem)
+        else:
+            batch_transl_lst.append(elem)
+
+    batched_pnat = collate_torch_iterable(batch_pnat_lst, pad_token_id, num_workers=num_workers, labels_name="labels_pnat")
+    batched_transl = collate_torch_iterable(batch_transl_lst, pad_token_id, num_workers=num_workers, labels_name="labels_transl")
+    return batched_pnat, batched_transl
+
+
+def collate_pad(batch: List[Dict[str, Tensor]], pad_token_id: int, labels_name: str = 'labels') -> Dict[str, Tensor]:
     inp_ids_list: List[Tensor] = []
     labels_list: List[Tensor] = []
     att_mask_list: List[Tensor] = []
     elem: Dict[str, Tensor]
     for elem in batch:
         inp_ids_list.append(elem['input_ids'])
-        labels_list.append(elem['labels'])
+        labels_list.append(elem[labels_name])
         att_mask_list.append(elem['attention_mask'])
 
     max_len_labels = max(labels_list, key=lambda e: e.shape[-1]).shape[-1]
@@ -31,10 +46,10 @@ def collate_pad(batch: List[Dict[str, Tensor]], pad_token_id: int) -> Dict[str, 
     # padded_lab: Tensor = pad(padded_lab, pad=(0, tgt_len - padded_lab.shape[-1], 0, 0), mode='constant', value=-100)
 
     # padded_lab = pad(padded_lab, pad=(0, 10, 0, 0), mode='constant', value=1)
-    return {"input_ids": padded_inp, "labels": padded_lab, "attention_mask": padded_att}
+    return {"input_ids": padded_inp, labels_name: padded_lab, "attention_mask": padded_att}
 
 
-def collate_torch_iterable(batch_list, pad_token_id: int, num_workers: int = 1):
+def collate_torch_iterable(batch_list, pad_token_id: int, num_workers: int = 1, labels_name: str = "labels"):
     from concurrent.futures import ThreadPoolExecutor
     batch_size, batch_reminder = divmod(len(batch_list), num_workers)
     results = []
@@ -44,19 +59,20 @@ def collate_torch_iterable(batch_list, pad_token_id: int, num_workers: int = 1):
         for i in range(num_workers):
             i_end = i_end + batch_size + int(batch_reminder > 0)
             batch_reminder = batch_reminder - 1
-            results.append(executor.submit(parallel_copy, batch_list=batch_list[i_start:i_end]))
+            results.append(
+                executor.submit(parallel_copy, batch_list=batch_list[i_start:i_end], labels_name=labels_name))
             i_start = i_end
     batch_list = []
     for res in results:
         batch_list.extend(res.result())
-    return collate_pad(batch_list, pad_token_id)
+    return collate_pad(batch_list, pad_token_id, labels_name)
 
 
-def parallel_copy(batch_list: List):
+def parallel_copy(batch_list: List, labels_name: str):
     for batch in batch_list:
         batch['input_ids'] = torch.tensor(batch['input_ids'])
         batch['attention_mask'] = torch.tensor(batch['attention_mask'])
-        batch['labels'] = torch.tensor(batch['labels'])
+        batch[labels_name] = torch.tensor(batch[labels_name])
     return batch_list
 
 

@@ -76,30 +76,15 @@ if __name__ == '__main__':
     dev = "cuda:0" if torch.cuda.is_available() else "cpu"
     #     # tok_en = MBartTokenizer.from_pretrained("facebook/mbart-large-cc25", lang1="en_XX", lang2="fr_XX")
     model: MBartForConditionalGeneration = MBartForConditionalGeneration.from_pretrained(
-        "/home/n.dallanoce/PyCharm/pretraining/weights/streaming_mbart_ft_en-fr/checkpoint-300000").to(dev)
-    #     # tok_en = MarianTokenizer.from_pretrained("Helsinki-NLP/opus-mt-en-fr")
-    #     # model = MarianMTModel.from_pretrained("Helsinki-NLP/opus-mt-en-fr", cache_dir = "/home/n.dallanoce/huggingface/models").to(dev)
-    #     # model.load_state_dict(
-    #     #     torch.load(
-    #     #         "/home/n.dallanoce/PyCharm/pretraining/weights/mbart_ft_fr-en_cc_ls/checkpoint-70000/pytorch_model.bin",
-    #     #         map_location=dev))
-    #     # tokenized = tok_en(to_translate,
-    #     #                    text_target="", add_special_tokens=True, return_tensors='pt')
-    #     model.train(False)
-    #
-    #     # model.load_state_dict(
-    #     #     torch.load("D:\\trainer\\mbart_ft_fr-en\\pytorch_model.bin", map_location='cuda:0'))
-    #
-    #     # trans = tok_en.batch_decode(
-    #     #     model.generate(tokenized['input_ids'].to(dev), max_length=128, decoder_start_token_id=250008, num_beams=3))
-    #     # print({'sentence': to_translate, 'prediction': trans, 'original': original})
-    #
-    #     # translation_ds = translation_ds.remove_columns(['id', 'score', 'translation'])
-    translation_ds = load_dataset("wmt14", "fr-en",
+        "/home/n.dallanoce/PyCharm/pretraining/weights/mbart_ft_e1_en-fr-de/checkpoint-520000").to(dev)
+
+    translation_ds = load_dataset("wmt14", "de-en",
                                   cache_dir="/data/n.dallanoce/wmt14",
-                                  split=f"test",
+                                  split=f"validation",
                                   verification_mode='no_checks')
-    bleu = compute_bleu(translation_ds, model, src_lang="en", tgt_lang="fr", device=dev, num_beams=5)
+
+    print(len(translation_ds))
+    bleu = compute_bleu(translation_ds, model, src_lang="en", tgt_lang="de", device=dev, num_beams=5)
     print(bleu)
 #
 # # pipe = pipeline(model=model, task="translation", tokenizer=tok_en, device="cuda:0")

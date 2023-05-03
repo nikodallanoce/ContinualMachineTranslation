@@ -107,12 +107,14 @@ class MT6PreTrainingDataset(Dataset):
 
 
 def get_item_for_iterable(batch, tokenizer: MT5TokenizerFast,
-                          noise_fn: MT6NoiseFunction = MT6NoiseFunction(),
+                          noise_fn: MT6NoiseFunction = MT6NoiseFunction(return_list=True),
                           seed: int = None,
                           input_max_length: int = 128,
                           has_translation_pairs: bool = False):
+    labels = "labels_pnat"
     if has_translation_pairs:
         noise_fn = MT5NoiseFunction()
+        labels = "labels_transl"
 
     if type(batch) is list:
         labels_lst = []
@@ -141,7 +143,7 @@ def get_item_for_iterable(batch, tokenizer: MT5TokenizerFast,
         else:
             att_mask_lst, labels_lst, input_ids_lst = noise_and_tokenize(input_max_length, noise_fn, seed, batch,
                                                                          tokenizer)
-    return {'input_ids': input_ids_lst, 'labels': labels_lst, 'attention_mask': att_mask_lst}
+    return {'input_ids': input_ids_lst, labels: labels_lst, 'attention_mask': att_mask_lst}
 
 
 def translation_span_corruption(input_max_length: int, noise_fn: MT5NoiseFunction, seed: int, text_pair: Dict[str, str],
@@ -154,7 +156,7 @@ def translation_span_corruption(input_max_length: int, noise_fn: MT5NoiseFunctio
     tok_src = tokenizer(src_txt, return_special_tokens_mask=False,
                         add_special_tokens=True, truncation=True,
                         max_length=input_max_length, padding='longest')
-    tok_tgt = tokenizer(src_txt, return_special_tokens_mask=False,
+    tok_tgt = tokenizer(tgt_txt, return_special_tokens_mask=False,
                         add_special_tokens=True, truncation=True,
                         max_length=input_max_length, padding='longest', return_attention_mask=False)
 
@@ -163,6 +165,27 @@ def translation_span_corruption(input_max_length: int, noise_fn: MT5NoiseFunctio
     labels: List[int] = tok_tgt['input_ids']
     return att_mask, labels, input_ids
 
+
+# def noise_and_tokenize(input_max_length, noise_fn, seed, text, tokenizer):
+#     text = text.strip()
+#     txt_lst = text.split()
+#     ref_len = round(input_max_length - 0.4 * input_max_length)
+#     ref_len = len(txt_lst) if len(txt_lst) < ref_len else ref_len
+#     text = " ".join(filter(None, txt_lst[0:ref_len]))
+#     label_ids, targets = noise_fn.compute(text, seed)
+#     input_tok = tokenizer(text, return_special_tokens_mask=False,
+#                           add_special_tokens=True, truncation=True,
+#                           max_length=input_max_length, padding='longest')
+#     out_tok = tokenizer(targets, return_special_tokens_mask=False,
+#                         add_special_tokens=True, truncation=True,
+#                         max_length=input_max_length, padding='longest',
+#                         return_attention_mask=False, return_token_type_ids=False)
+#
+#     input_ids: List[int] = input_tok['input_ids']
+#     att_mask: List[int] = input_tok['attention_mask']
+#     labels: List[int] = out_tok['input_ids']
+#     labels = [-100 if e == tokenizer.pad_token_id else e for e in labels]
+#     return att_mask, labels, input_ids
 
 def noise_and_tokenize(input_max_length, noise_fn, seed, text, tokenizer):
     text = text.strip()
