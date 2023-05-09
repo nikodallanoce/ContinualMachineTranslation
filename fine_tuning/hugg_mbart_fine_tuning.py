@@ -244,8 +244,8 @@ if __name__ == '__main__':
     trainer = MBartTrainer(model, training_args,
                            train_dataset=ConcatDataset([en_es_ds, es_en_ds]),
                            # eval_dataset={'bleu_en_fr': val_ds, 'bleu_fr_en': val_ds},  # , 'bleu_fr_en': val_ds},
-                           eval_dataset={f"{val_ds_config_en_es}": val_ds_es_en,
-                                         # f"{val_ds_config_en_de}": val_ds_de_en
+                           eval_dataset={f"{val_ds_config_en_de}": val_ds_de_en,
+                                         f"{val_ds_config_en_es}": val_ds_es_en,
                                          }
                            # optimizers=(optimizer, lr_scheduler)
                            )

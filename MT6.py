@@ -50,7 +50,7 @@ class MT6(MT5ForConditionalGeneration):
                 warnings.warn(__HEAD_MASK_WARNING_MSG, FutureWarning)
                 decoder_head_mask = head_mask
 
-        #group_lab, transl_lab = self.create_groups(labels, attention_mask)
+        # group_lab, transl_lab = self.create_groups(labels, attention_mask)
 
         # Encode if needed (training, first prediction pass)
         encoder_outputs, hidden_states = self.encoder_forward(attention_mask, encoder_outputs, head_mask, input_ids,
@@ -66,10 +66,11 @@ class MT6(MT5ForConditionalGeneration):
         lm_logits, decoder_outputs = None, None
 
         total_loss = None if (labels is None) else 0
-
+        label = None
         for i in range(decoder_iterations):
-            label = labels[:, i, :].contiguous() if pnat_labels else labels.contiguous()
-            decoder_attention_mask, decoder_input_ids, decoder_inputs_embeds = None, None, None
+            if labels is not None:
+                label = labels[:, i, :].contiguous() if pnat_labels else labels.contiguous()
+                decoder_attention_mask, decoder_input_ids, decoder_inputs_embeds = None, None, None
             attention_mask, decoder_attention_mask, decoder_input_ids, hidden_states = self.prepare_decoder(
                 attention_mask,
                 decoder_attention_mask,
@@ -87,7 +88,7 @@ class MT6(MT5ForConditionalGeneration):
                                                               past_key_values, return_dict, use_cache)
 
             loss = self.compute_loss(lm_logits, label)
-            if labels is not None:
+            if not bool(torch.isnan(loss).any()):
                 total_loss = total_loss + loss
 
         if not return_dict:
@@ -129,11 +130,10 @@ class MT6(MT5ForConditionalGeneration):
         return encoder_outputs, hidden_states
 
     def compute_loss(self, lm_logits, labels):
-        loss = None
+        loss = torch.tensor(float("nan"))
         if labels is not None:
             loss_fct = CrossEntropyLoss(ignore_index=-100)
             loss = loss_fct(lm_logits.view(-1, lm_logits.size(-1)), labels.view(-1))
-
         return loss
 
     def decoder_forward(self, attention_mask, cross_attn_head_mask, decoder_attention_mask, decoder_head_mask,
@@ -184,53 +184,3 @@ class MT6(MT5ForConditionalGeneration):
                 decoder_attention_mask = decoder_attention_mask.to(self.decoder.first_device)
         return attention_mask, decoder_attention_mask, decoder_input_ids, hidden_states
 
-    def prepare_inputs_for_generation(
-            self,
-            input_ids,
-            past=None,
-            attention_mask=None,
-            head_mask=None,
-            decoder_head_mask=None,
-            cross_attn_head_mask=None,
-            use_cache=None,
-            encoder_outputs=None,
-            **kwargs
-    ):
-
-        # cut decoder_input_ids if past is used
-        if past is not None:
-            input_ids = input_ids[:, -1:]
-
-        return {
-            "decoder_input_ids": input_ids,
-            "past_key_values": past,
-            "encoder_outputs": encoder_outputs,
-            "attention_mask": attention_mask,
-            "head_mask": head_mask,
-            "decoder_head_mask": decoder_head_mask,
-            "cross_attn_head_mask": cross_attn_head_mask,
-            "use_cache": use_cache,
-        }
-
-    def create_groups(self, labels: torch.Tensor, attention_mask: torch.Tensor):
-        groups = []
-        transl = []
-        start_i = 0
-        for r in range(labels.shape[0]):
-            labels_row = labels[r, :]
-            groups_row = []
-            for i in range(0, len(labels_row) - 1):
-                if 3 <= int(labels_row[i]) <= 102 and labels_row[i] == labels_row[i + 1]:
-                    groups_row.append(labels_row[start_i: i + 1])
-                    start_i = i + 1
-            if start_i < len(labels_row):
-                groups_row.append([labels_row[start_i:]])
-            if len(groups_row) == 0:
-                transl.append(labels_row)
-            else:
-                max_len_labels = max([x.shape[0] for x in groups_row])
-                for i in range(len(groups_row)):
-                    t: Tensor = groups_row[i]
-                    groups_row[i] = pad(t, pad=(0, max_len_labels - t.shape[-1]), mode="constant", value=-100)
-                groups.append(torch.stack(groups_row))
-        return groups, transl

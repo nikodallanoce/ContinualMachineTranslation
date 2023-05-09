@@ -18,8 +18,10 @@ def collate_pad_mt6(batch: List[Dict[str, Tensor]], pad_token_id: int, num_worke
             batch_transl_lst.append(elem)
 
     batched_pnat = collate_torch_iterable(batch_pnat_lst, pad_token_id, num_workers=num_workers, labels_name="labels_pnat")
-    batched_transl = collate_torch_iterable(batch_transl_lst, pad_token_id, num_workers=num_workers, labels_name="labels_transl")
-    return batched_pnat, batched_transl
+    if len(batch_transl_lst) > 0:
+        batched_transl = collate_torch_iterable(batch_transl_lst, pad_token_id, num_workers=num_workers, labels_name="labels_transl")
+        return [batched_pnat, batched_transl]
+    return [batched_pnat]
 
 
 def collate_pad(batch: List[Dict[str, Tensor]], pad_token_id: int, labels_name: str = 'labels') -> Dict[str, Tensor]:

@@ -4,10 +4,10 @@ import numpy as np
 
 class MT6NoiseFunction:
 
-    def __init__(self, n_groups: int = 3, noise_density: float = 0.5, return_list=True, span_length: int = 3):
+    def __init__(self, n_groups: int = 3, noise_density: float = 0.5, pnat=True, span_length: int = 3):
         self.n_groups: int = n_groups
         self.noise_density: float = noise_density
-        self.return_list: bool = return_list
+        self.return_list: bool = pnat
         self.span_length = span_length
 
     def compute(self, text: str, seed: int) -> Tuple[
@@ -163,7 +163,7 @@ if __name__ == '__main__':
     tok_en = MT5TokenizerFast.from_pretrained("nikodallanoce/mt5-cc4-vanilla-32k-5")
     #ds = MT6PreTrainingDataset(pre_train_ds, tok_en)
     original = "We introduce how to convert the following three types of the language understanding task into the text-to-text format. Under this setting, the models should be fine-tuned only on English training data but evaluated on all target languages. Moreover, for each pretrained model, only one model is used for all languages rather than selecting fine-tuned models separately."
-    src, trg = MT6NoiseFunction(return_list=True, noise_density=0.5).compute(text=original, seed=85)
+    src, trg = MT6NoiseFunction(noise_density=0.5, pnat=True).compute(text=original, seed=85)
     # for e in tqdm(DataLoader(ds, batch_size=128, collate_fn=partial(collate_pad, pad_token_id=tok_en.pad_token_id),
     #                          num_workers=16)):
     #     pass

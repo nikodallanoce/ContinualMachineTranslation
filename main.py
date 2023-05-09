@@ -100,7 +100,7 @@ if __name__ == '__main__':
     fr_mc4 = load_dataset("mc4", "fr", split="train", streaming=True)
     en_mc4 = en_mc4.map(
         partial(custom_datasets.MT6PreTrainingDataset.get_item_for_iterable, tokenizer=tok_en,
-                noise_fn=MT6NoiseFunction(return_list=True)),
+                noise_fn=MT6NoiseFunction(pnat=True)),
         batched=True,
         batch_size=128,
         remove_columns=['url', 'timestamp'],

@@ -1,13 +1,14 @@
 from functools import partial
 
+import datasets
 import torch.nn
 from datasets import load_dataset
 import transformers
 from transformers import Seq2SeqTrainingArguments, MT5ForConditionalGeneration, MT5Config, MT5TokenizerFast
-from MT6TokenizerFast import MT6TokenizerFast
 import sys
 
 sys.path.insert(0, '/home/n.dallanoce/PyCharm/pretraining')
+from MT6TokenizerFast import MT6TokenizerFast
 from iterable_datasets.IterMT6PreTrainingDataset import IterMT6PreTrainingDataset
 from MT6 import MT6
 from noise_functions.MT5NoiseFunction import MT5NoiseFunction
@@ -17,8 +18,8 @@ from trainers.MT6Trainer import MT6Trainer
 import os
 
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"  # see issue #152
-os.environ["CUDA_VISIBLE_DEVICES"] = "1,0"
-project_name = "stream_mt6_tests"
+# os.environ["CUDA_VISIBLE_DEVICES"] = "0,1"
+project_name = "stream_mt5"
 os.environ["WANDB_PROJECT"] = project_name
 
 # save your trained model checkpoint to wandb
@@ -65,7 +66,7 @@ def run_server():
                                              overwrite_output_dir=True,
                                              # label_names=['labels_pnat', 'labels_transl'],
                                              do_train=True,
-                                             per_device_train_batch_size=2,
+                                             per_device_train_batch_size=8,
                                              gradient_accumulation_steps=1,
                                              # num_train_epochs=1,
                                              optim="adamw_torch",
@@ -79,7 +80,7 @@ def run_server():
                                              fp16=True,
                                              dataloader_drop_last=True,
                                              dataloader_pin_memory=True,
-                                             dataloader_num_workers=4,
+                                             dataloader_num_workers=2,
                                              # load_best_model_at_end=True,
                                              # prediction_loss_only=True,
                                              save_total_limit=1,
@@ -89,11 +90,12 @@ def run_server():
                                              greater_is_better=False,
                                              report_to=["wandb"]
                                              )
-    pre_train_ds = load_dataset("cc100", lang="en",
-                                cache_dir="/data/n.dallanoce/cc100/huggingface",
-                                split=f"train[0:30000000]",
-                                # split=f"train[{4096}:{4096*2}]",
-                                verification_mode='no_checks')
+    pre_train_ds = None
+    # pre_train_ds = load_dataset("cc100", lang="en",
+    #                             cache_dir="/data/n.dallanoce/cc100/huggingface",
+    #                             split=f"train[0:30000000]",
+    #                             # split=f"train[{4096}:{4096*2}]",
+    #                             verification_mode='no_checks')
     return training_args, pre_train_ds
 
 
@@ -102,9 +104,8 @@ if __name__ == '__main__':
 
     # special_tokens = ["en_XX", "de_DE", "es_XX", "fr_XX"]
     # tok_en = MT5Tokenizer.from_pretrained("google/mt5-base", additional_special_tokens=special_tokens)
-    tok_en = MT6TokenizerFast.from_pretrained("nikodallanoce/mt5-cc4-vanilla-32k-5", src_lang="en_XX")
-    tok_en_fr = MT6TokenizerFast.from_pretrained("nikodallanoce/mt5-cc4-vanilla-32k-5", src_lang="en_XX",
-                                                 tgt_lang="fr_XX")
+    tok_en = MT5TokenizerFast.from_pretrained("nikodallanoce/mt5-cc4-vanilla-32k-5")
+    tok_en_fr = MT5TokenizerFast.from_pretrained("nikodallanoce/mt5-cc4-vanilla-32k-5")
     ris = tok_en("<extra_id_0> <extra_id_1> <extra_id_3> en_XX")
 
     # model = MT5ForConditionalGeneration(
@@ -115,22 +116,30 @@ if __name__ == '__main__':
     training_args, pre_train_ds = run_server()
 
     # pre_train_ds = MT6PreTrainingDataset(pre_train_ds, tok_en, noise_fn=MT5NoiseFunction())
-    en_mc4 = load_dataset("mc4", "en", split="train", streaming=True)
-    en_mc4 = en_mc4.map(partial(get_item_for_iterable, tokenizer=tok_en, noise_fn=MT6NoiseFunction(return_list=True)),
-                        input_columns=['text'], batched=True, batch_size=128,
-                        remove_columns=['url', 'timestamp']).remove_columns(['text'])
+    en_mc4 = load_dataset("mc4", languages=["en"], split="train", streaming=True)
+    fr_mc4 = load_dataset("mc4", languages=["fr"], split="train", streaming=True)
+    en_fr_mc4 = datasets.interleave_datasets([en_mc4, fr_mc4])
+    # en_fr_mc4 = en_fr_mc4.map(partial(get_item_for_iterable, tokenizer=tok_en,
+    #                                   noise_fn=MT6NoiseFunction(n_groups=2, noise_density=0.3, pnat=True)),
+    #                           input_columns=['text'], batched=True, batch_size=128,
+    #                           remove_columns=['url', 'timestamp']).remove_columns(['text'])
+    en_fr_mc4 = en_fr_mc4.map(partial(get_item_for_iterable, tokenizer=tok_en,
+                                      noise_fn=MT5NoiseFunction(noise_density=0.3)),
+                              input_columns=['text'], batched=True, batch_size=256,
+                              remove_columns=['url', 'timestamp']).remove_columns(['text'])
 
     en_fr_ds = load_dataset("yhavinga/ccmatrix", "en-fr",
                             split="train",
                             streaming=True)
     en_fr_ds = en_fr_ds.map(
         partial(get_item_for_iterable, tokenizer=tok_en_fr,
+                noise_fn=MT6NoiseFunction(n_groups=2, noise_density=0.3, pnat=True),
                 has_translation_pairs=True), batched=True,
         batch_size=128,
         remove_columns=['id', 'score'],
         input_columns=['translation']).remove_columns(['translation'])
 
-    train_ds = IterMT6PreTrainingDataset([en_mc4, en_fr_ds])
+    train_ds = IterMT6PreTrainingDataset([en_fr_mc4])
 
     trainer = MT6Trainer(model, training_args,
                          train_dataset=train_ds,

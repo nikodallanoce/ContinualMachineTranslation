@@ -12,6 +12,7 @@ from transformers import Trainer, PreTrainedModel, TrainingArguments, DataCollat
 from transformers.utils import is_torch_fx_proxy
 
 from custom_datasets.MT6PreTrainingDataset import MT6PreTrainingDataset
+from eval.bleu_utility import compute_bleu_mt6
 from utilities.utility import collate_pad, collate_torch_iterable, collate_pad_mt6
 
 
@@ -82,51 +83,48 @@ class MT6Trainer(Seq2SeqTrainer):
 
     def evaluate(self, eval_dataset: Optional[Dataset] = None, ignore_keys: Optional[List[str]] = None,
                  metric_key_prefix: str = "eval", **gen_kwargs) -> Dict[str, float]:
-        return super().evaluate(eval_dataset, ignore_keys, metric_key_prefix, **gen_kwargs)
+
+        eval_metrics: Dict[str, float] = dict()
+        src_tgt_langs = metric_key_prefix.split("_")
+        src_lang, tgt_lang = src_tgt_langs[1], src_tgt_langs[2]
+        for i in range(2):
+            bleu_score = compute_bleu_mt6(eval_dataset, self.model,
+                                          src_lang=src_lang,
+                                          tgt_lang=tgt_lang)["bleu"] * 100
+            eval_metrics[f"eval_bleu_{src_lang}_{tgt_lang}"] = bleu_score
+            src_lang, tgt_lang = tgt_lang, src_lang
+
+        self.log(eval_metrics)
+        return eval_metrics
 
     def compute_loss(self, model, inputs, return_outputs=False):
-        total_loss = []
+        if "loss" in self.args.metric_for_best_model:
+            return super().compute_loss(model, inputs, return_outputs)
+        else:
+            loss = self.compute_mt6_loss(model, inputs, return_outputs)
+            return loss
+
+    def compute_mt6_loss(self, model, inputs, return_outputs):
+        total_loss: List[torch.Tensor] = []
+        labels_names: List[str] = []
         inputs: List[Dict[str, Tensor]]
         for inp in inputs:
             label_key = list(inp.keys())[1]
-            dict_inp = {'input_ids': inp['input_ids'], 'attention_mask': inp['attention_mask'],
-                        'labels': inp[label_key]}
-            # loss = super().compute_loss(model, dict_inp, return_outputs)
-            outputs = model(**dict_inp)
-            loss = outputs["loss"] if isinstance(outputs, dict) else outputs[0]
+            labels_names.append(label_key)
+            dict_inp: Dict[str, torch.Tensor] = {'input_ids': inp['input_ids'], 'attention_mask': inp['attention_mask'],
+                                                 'labels': inp[label_key]}
+            loss: torch.Tensor = super().compute_loss(model, dict_inp, return_outputs)
+            # outputs = model(**dict_inp)
+            # loss = outputs["loss"] if isinstance(outputs, dict) else outputs[0]
             total_loss.append(loss)
-        stack_losses = torch.stack(total_loss)
-        loss = torch.sum(stack_losses, dim=0)
+        stack_losses: torch.Tensor = torch.stack(total_loss)
+        loss: torch.Tensor = torch.sum(stack_losses, dim=0)
+        if self.state.global_step % self.args.logging_steps == 0 and self.state.global_step > 0:
+            with torch.no_grad():
+                if stack_losses.shape[0] > 1:
+                    mean_losses: torch.Tensor = torch.mean(stack_losses, dim=1)
+                else:
+                    mean_losses: torch.Tensor = loss
+                for i, lab_name in enumerate(labels_names):
+                    self.log({lab_name: float(mean_losses[i])})
         return loss
-
-    # def training_step(self, model: nn.Module, inputs: Dict[str, Union[torch.Tensor, Any]]) -> torch.Tensor:
-    #     targets = inputs["labels"]
-    #     # att_mask = inputs["attention_mask"]
-    #     loss: Tensor = 0
-    #     for i in range(targets.shape[1]):
-    #         group: Tensor = targets[:, i, :]
-    #         labels = group.contiguous()
-    #         inputs["labels"] = labels
-    #         loss += super().training_step(model, inputs)
-    #         #loss += super().compute_loss(model, inputs)
-    #     return loss
-
-    # def compute_loss(self, model, inputs, return_outputs=False):
-    #     # input_ids = inputs["input_ids"]
-    #     groups = inputs["labels"]
-    #     # att_mask = inputs["attention_mask"]
-    #     group_loss: List[Tensor] = []
-    #     loss_sum = 0
-    #     for i in range(groups.shape[1]):
-    #         group_i: Tensor = groups[:, i, :]
-    #         group_i: Tensor = group_i.contiguous()
-    #         # decoder_input_ids = self.shift_tokens_right(labels, model.config.pad_token_id)
-    #         # if int(labels[:, 0]) == model.config.eos_token_id:
-    #         #     continue
-    #         inputs["labels"] = group_i
-    #         inputs["decoder_input_ids"] = self.shift_right(group_i)
-    #         loss_i = super().compute_loss(model, inputs, return_outputs)
-    #         group_loss.append(loss_i)
-    #         #loss_sum += loss_i
-    #     loss = torch.sum(torch.stack(group_loss))
-    #     return loss

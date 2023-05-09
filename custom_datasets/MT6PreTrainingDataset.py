@@ -17,7 +17,7 @@ class MT6PreTrainingDataset(Dataset):
 
     def __init__(self, hugg_dataset: datasets.Dataset, tokenizer: MT5TokenizerFast,
                  input_max_length=128, ds_field: str = "text",
-                 noise_fn: MT6NoiseFunction = MT6NoiseFunction(return_list=True)):
+                 noise_fn: MT6NoiseFunction = MT6NoiseFunction(pnat=True)):
         super().__init__()
         # self.ds_indexes: Dict[str, Tuple[int, int]] = prepare_ds_indexes(hugg_datasets)
         self.dataset: datasets.Dataset = hugg_dataset  # datasets.concatenate_datasets(list(hugg_datasets.values()))
@@ -107,13 +107,14 @@ class MT6PreTrainingDataset(Dataset):
 
 
 def get_item_for_iterable(batch, tokenizer: MT5TokenizerFast,
-                          noise_fn: MT6NoiseFunction = MT6NoiseFunction(return_list=True),
+                          noise_fn: MT6NoiseFunction = MT6NoiseFunction(pnat=True),
                           seed: int = None,
                           input_max_length: int = 128,
                           has_translation_pairs: bool = False):
     labels = "labels_pnat"
     if has_translation_pairs:
-        noise_fn = MT5NoiseFunction()
+        # if not isinstance(noise_fn, MT5NoiseFunction):
+        #     noise_fn = MT5NoiseFunction()
         labels = "labels_transl"
 
     if type(batch) is list:
@@ -122,9 +123,8 @@ def get_item_for_iterable(batch, tokenizer: MT5TokenizerFast,
         att_mask_lst = []
 
         for text in batch:
-            if seed is None:
-                seed = np.random.randint(0, 2147483648)
 
+            seed = np.random.randint(0, 2147483648)
             if has_translation_pairs:
                 att_mask, label, input_ids = translation_span_corruption(input_max_length, noise_fn, seed, text,
                                                                          tokenizer)
@@ -146,23 +146,26 @@ def get_item_for_iterable(batch, tokenizer: MT5TokenizerFast,
     return {'input_ids': input_ids_lst, labels: labels_lst, 'attention_mask': att_mask_lst}
 
 
-def translation_span_corruption(input_max_length: int, noise_fn: MT5NoiseFunction, seed: int, text_pair: Dict[str, str],
+def translation_span_corruption(input_max_length: int, noise_fn: Union[MT5NoiseFunction, MT6NoiseFunction], seed: int,
+                                text_pair: Dict[str, str],
                                 tokenizer: MT5TokenizerFast):
     rng = np.random.default_rng(seed)
     transl_pairs: List[str] = list(text_pair.values())
-    mask_idx = rng.choice([0, 1])
+    mask_idx = rng.integers(0, len(transl_pairs), dtype=int)
     transl_pairs[mask_idx], tgt_txt = noise_fn.compute(transl_pairs[mask_idx], seed)
-    src_txt = " ".join(transl_pairs)
-    tok_src = tokenizer(src_txt, return_special_tokens_mask=False,
-                        add_special_tokens=True, truncation=True,
-                        max_length=input_max_length, padding='longest')
-    tok_tgt = tokenizer(tgt_txt, return_special_tokens_mask=False,
-                        add_special_tokens=True, truncation=True,
-                        max_length=input_max_length, padding='longest', return_attention_mask=False)
-
-    input_ids: List[int] = tok_src['input_ids']
-    att_mask: List[int] = tok_src['attention_mask']
-    labels: List[int] = tok_tgt['input_ids']
+    src_txt = "</s> ".join(transl_pairs)
+    att_mask, labels, input_ids = tokenize(src_txt, tgt_txt, noise_fn, input_max_length, tokenizer)
+    # tok_src = tokenizer(src_txt, return_special_tokens_mask=False,
+    #                     add_special_tokens=True, truncation=True,
+    #                     max_length=input_max_length, padding='longest')
+    # tok_tgt = tokenizer(tgt_txt, return_special_tokens_mask=False,
+    #                     add_special_tokens=True, truncation=True,
+    #                     max_length=input_max_length, padding='longest',
+    #                     return_attention_mask=False)
+    #
+    # input_ids: List[int] = tok_src['input_ids']
+    # att_mask: List[int] = tok_src['attention_mask']
+    # labels: List[int] = tok_tgt['input_ids']
     return att_mask, labels, input_ids
 
 
@@ -194,26 +197,31 @@ def noise_and_tokenize(input_max_length, noise_fn, seed, text, tokenizer):
     ref_len = len(txt_lst) if len(txt_lst) < ref_len else ref_len
     text = " ".join(filter(None, txt_lst[0:ref_len]))
     label_ids, targets = noise_fn.compute(text, seed)
-    input_tok = tokenizer(text, return_special_tokens_mask=False,
+    att_mask, labels, input_ids = tokenize(text, targets, noise_fn, input_max_length, tokenizer)
+    return att_mask, labels, input_ids
+
+
+def tokenize(inp_text, targets, noise_fn, input_max_length, tokenizer):
+    input_tok = tokenizer(inp_text, return_special_tokens_mask=False,
                           add_special_tokens=True, truncation=True,
                           max_length=input_max_length, padding='longest')
     tgt_len = input_max_length
     if noise_fn.n_groups > 1:
         tgt_len = input_max_length // noise_fn.n_groups
-
     out_tok = tokenizer(targets, return_special_tokens_mask=False,
                         add_special_tokens=True, truncation=True,
                         max_length=tgt_len, padding='longest',
                         return_attention_mask=False, return_token_type_ids=False)
-
     input_ids: List[int] = input_tok['input_ids']
     att_mask: List[int] = input_tok['attention_mask']
     labels: Union[List[List[int]], List[int]] = out_tok['input_ids']
     if noise_fn.n_groups > 1:
         labels: List[List[int]]
-        for group_i in labels:
+        for g_idx in range(len(labels)):
+            group_i = labels[g_idx]
             for i in range(len(group_i)):
-                if group_i[i] == tokenizer.pad_token_id:
+                if group_i[i] == tokenizer.pad_token_id or (
+                        group_i[i] == tokenizer.eos_token_id and g_idx != (len(labels) - 1)):
                     group_i[i] = -100
         while len(labels) > noise_fn.n_groups:
             del labels[-1]
