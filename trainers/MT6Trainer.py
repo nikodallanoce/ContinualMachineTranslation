@@ -90,7 +90,8 @@ class MT6Trainer(Seq2SeqTrainer):
         for i in range(2):
             bleu_score = compute_bleu_mt6(eval_dataset, self.model,
                                           src_lang=src_lang,
-                                          tgt_lang=tgt_lang)["bleu"] * 100
+                                          tgt_lang=tgt_lang,
+                                          batch_size=32)["bleu"] * 100
             eval_metrics[f"eval_bleu_{src_lang}_{tgt_lang}"] = bleu_score
             src_lang, tgt_lang = tgt_lang, src_lang
 
@@ -99,10 +100,10 @@ class MT6Trainer(Seq2SeqTrainer):
 
     def compute_loss(self, model, inputs, return_outputs=False):
         if "loss" in self.args.metric_for_best_model:
-            return super().compute_loss(model, inputs, return_outputs)
-        else:
             loss = self.compute_mt6_loss(model, inputs, return_outputs)
             return loss
+        else:
+            return super().compute_loss(model, inputs, return_outputs)
 
     def compute_mt6_loss(self, model, inputs, return_outputs):
         total_loss: List[torch.Tensor] = []
