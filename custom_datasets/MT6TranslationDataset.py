@@ -11,7 +11,7 @@ from torch import Tensor
 from transformers import PreTrainedTokenizer, MT5TokenizerFast
 import datasets
 
-from custom_datasets.MT6PreTrainingDataset import MT6PreTrainingDataset
+from custom_datasets.MT6PreTrainingDataset import MT6PreTrainingDataset, tokenize_torch
 from noise_functions.MT5NoiseFunction import MT5NoiseFunction, MT6NoiseFunction
 
 PREFIX_TASK = {'en': "English", 'fr': "French", 'de': "German", 'es': "Spanish"}
@@ -20,7 +20,7 @@ PREFIX_TASK = {'en': "English", 'fr': "French", 'de': "German", 'es': "Spanish"}
 class MT6TranslationDataset(Dataset):
 
     def __init__(self, hugg_dataset: datasets.Dataset, tokenizer: MT5TokenizerFast, tgt_lang: str,
-                 src_lang: str = 'en', ds_field="translation", input_max_length: int = 128, min_words: int = 4,
+                 src_lang: str = "en", ds_field="translation", input_max_length: int = 128, min_words: int = 4,
                  skip_rows: Set[int] = None, noise_fn=MT6NoiseFunction(pnat=True)):
         super(MT6TranslationDataset, self).__init__()
 
@@ -33,6 +33,7 @@ class MT6TranslationDataset(Dataset):
         self.min_words: int = min_words
         self.skip_rows: Set = set() if skip_rows is None else skip_rows
         self.noise_fn: MT6NoiseFunction = noise_fn
+        self.labels_name: str = "labels" if noise_fn is None else "labels_tsc"
 
     def __len__(self):
         return len(self.hugg_dataset)
@@ -47,33 +48,36 @@ class MT6TranslationDataset(Dataset):
 
         if self.noise_fn is not None:
             tsc_src, tsc_tgt = self.translation_span_corruption(src, tgt, index, rng)
-            if self.noise_fn.return_list:
-                while len(tsc_src) < self.noise_fn.n_groups:
-                    new_src, new_tgt = self.retrieve_src_tgt(rng)
-                    src = src + " " + new_src
-                    tgt = tgt + " " + new_tgt
-                    tsc_src, tsc_tgt = self.translation_span_corruption(src, tgt, index, rng)
-            max_len = self.input_max_length // len(tsc_src)
-            inputs, targets = tsc_src, tsc_tgt
+            # if self.noise_fn.return_list:
+            #     while len(tsc_src) < self.noise_fn.n_groups:
+            #         new_src, new_tgt = self.retrieve_src_tgt(rng)
+            #         src = src + " " + new_src
+            #         tgt = tgt + " " + new_tgt
+            #         tsc_src, tsc_tgt = self.translation_span_corruption(src, tgt, index, rng)
+            att_mask, labels, input_ids = tokenize_torch(tsc_src, tsc_tgt, self.noise_fn, self.input_max_length,
+                                                         self.tokenizer)
+            # att_mask, labels, input_ids = torch.tensor(att_mask), torch.tensor(labels), torch.tensor(input_ids)
         else:
             src = f"translate {PREFIX_TASK[self.src_lang]} to {PREFIX_TASK[self.tgt_lang]}: " + src
             inputs, targets = src, tgt
-            max_len = self.input_max_length
 
-        inp_tok = self.tokenizer(inputs, return_special_tokens_mask=False,
-                                 add_special_tokens=True, truncation=True,
-                                 max_length=self.input_max_length,
-                                 return_tensors='pt')
+            inp_tok = self.tokenizer(inputs, return_special_tokens_mask=False,
+                                     add_special_tokens=True, truncation=True,
+                                     max_length=self.input_max_length,
+                                     return_tensors='pt')
 
-        out_tok = self.tokenizer(targets, return_special_tokens_mask=False,
-                                 add_special_tokens=True, truncation=True,
-                                 max_length=max_len, padding='longest',
-                                 return_tensors='pt', return_attention_mask=False, return_token_type_ids=False)
+            out_tok = self.tokenizer(targets, return_special_tokens_mask=False,
+                                     add_special_tokens=True, truncation=True,
+                                     max_length=self.input_max_length, padding='longest',
+                                     return_tensors='pt', return_attention_mask=False, return_token_type_ids=False)
 
-        labels: Tensor = out_tok['input_ids'].view(-1)
-        labels: Tensor = torch.where(labels == self.tokenizer.pad_token_id, -100, labels)
-        return {'input_ids': inp_tok['input_ids'].view(-1), 'labels': labels,
-                'attention_mask': inp_tok['attention_mask'].view(-1)}
+            input_ids = inp_tok['input_ids'].view(-1)
+            att_mask: Tensor = inp_tok['attention_mask'].view(-1)
+            labels: Tensor = out_tok['input_ids'].view(-1)
+            labels[labels == self.tokenizer.pad_token_id] = -100
+
+        return {'input_ids': input_ids, self.labels_name: labels,
+                'attention_mask': att_mask}
 
     def translation_span_corruption(self, src: str, trg: str, index: int, rng: Generator) -> Tuple[str, List[str]]:
         transl_pairs: List[str] = [src, trg]

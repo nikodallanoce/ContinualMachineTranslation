@@ -19,9 +19,9 @@ from custom_datasets.MT6PreTrainingDataset import MT6PreTrainingDataset, get_ite
 from trainers.MT6Trainer import MT6Trainer
 import os
 
-os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"  # see issue #152
-# os.environ["CUDA_VISIBLE_DEVICES"] = "0,1"
-project_name = "stream_mt6_ft_en-fr"
+# os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"  # see issue #152
+# os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+project_name = "stream_mt6_ft_en-fr_hilr"
 os.environ["WANDB_PROJECT"] = project_name
 
 # save your trained model checkpoint to wandb
@@ -39,7 +39,7 @@ if __name__ == '__main__':
                                              gradient_accumulation_steps=1,
                                              # num_train_epochs=1,
                                              optim="adamw_torch",
-                                             learning_rate=6e-4,
+                                             learning_rate=1e-3,
                                              lr_scheduler_type="linear",
                                              max_steps=int(3e5),
                                              logging_steps=500,
@@ -90,14 +90,17 @@ if __name__ == '__main__':
                                                 324665884})
 
     model = MT5ForConditionalGeneration.from_pretrained(
-        "/home/n.dallanoce/PyCharm/pretraining/weights/stream_mt6_pnat/checkpoint-100000")
+        "/home/n.dallanoce/PyCharm/pretraining/weights/mt6_pre_en-fr/checkpoint-100000")
+
+    # model = MT5ForConditionalGeneration(
+    #     MT5Config(num_layers=6, d_model=512, num_heads=8, vocab_size=len(tok_en), max_length=128))
 
     val_ds_fr_en = load_dataset("wmt14", "fr-en",
                                 cache_dir="/data/n.dallanoce/wmt14",
                                 split=f"validation",
                                 verification_mode='no_checks')
     val_ds_config_en_fr = val_ds_fr_en.config_name.replace("-", "_")
-    trainer = MT6Trainer(model, training_args,
+    trainer = MT6Trainer("finetuning", model, training_args,
                          train_dataset=ConcatDataset([en_fr_ds, fr_en_ds]),
                          eval_dataset={f"{val_ds_config_en_fr}": val_ds_fr_en}
                          )

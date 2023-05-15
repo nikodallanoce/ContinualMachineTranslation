@@ -13,9 +13,8 @@ import os
 
 PREFIX_TASK = {'en': "English", 'fr': "French", 'de': "German", 'es': "Spanish"}
 
-
-# os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"  # see issue #152
-# os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+#os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"  # see issue #152
+#os.environ["CUDA_VISIBLE_DEVICES"] = "3"
 
 
 def tokenize(examples: List[Dict[str, str]], **kwargs):
@@ -33,6 +32,8 @@ def tokenize(examples: List[Dict[str, str]], **kwargs):
                         add_special_tokens=True, truncation=True,
                         max_length=128, padding='max_length', return_attention_mask=False,
                         return_tensors='pt')
+    labels = tokenizer(batch_tgt, truncation=False)
+    batch_tgt = tokenizer.batch_decode(labels['input_ids'], skip_special_tokens=True)
 
     return {'input_ids': outputs['input_ids'], 'original_text': batch_tgt}
 
@@ -46,7 +47,7 @@ def compute_bleu_mbart(trans_pair_ds: Dataset,
                        num_beams: int = 5,
                        device: str = "cuda:0",
                        batch_size: int = 32,
-                       bleu_type: str = "bleu"):
+                       bleu_type: str = "bleu") -> Dict[str, Any]:
     src_tok = src_lang + "_XX"
     tgt_tok = tgt_lang + "_XX"
     if src_lang == "de":
@@ -72,7 +73,7 @@ def compute_bleu_mt6(trans_pair_ds: Dataset,
                      num_beams: int = 5,
                      device: str = "cuda:0",
                      batch_size: int = 32,
-                     bleu_type: str = "bleu"):
+                     bleu_type: str = "bleu") -> Dict[str, Any]:
     tok_name = "nikodallanoce/mt5-cc4-vanilla-32k-5"
     tokenizer: PreTrainedTokenizer = AutoTokenizer.from_pretrained(tok_name)
     fn_kwargs = {'tokenizer': tokenizer, 'lang1': src_lang, 'lang2': tgt_lang,
@@ -84,7 +85,8 @@ def compute_bleu_mt6(trans_pair_ds: Dataset,
     return results
 
 
-def compute_hugg_bleu(decoder_start_token_id, device, max_length, model, num_beams, test_loader, tokenizer, bleu_type):
+def compute_hugg_bleu(decoder_start_token_id, device, max_length, model, num_beams, test_loader, tokenizer,
+                      bleu_type) -> Dict[str, Any]:
     bleu = evaluate.load(bleu_type)
     for i, batch in enumerate(tqdm(test_loader)):
         translation = model.generate(batch['input_ids'].to(device), num_beams=num_beams, max_length=max_length,
@@ -92,14 +94,17 @@ def compute_hugg_bleu(decoder_start_token_id, device, max_length, model, num_bea
         bleu.add_batch(predictions=tokenizer.batch_decode(translation, skip_special_tokens=True),
                        references=[[elem] for elem in batch['original_text']])
     results = bleu.compute()
+    if bleu_type in results:
+        results['bleu'] *= 100
     return results
 
 
-def create_dataloader(trans_pair_ds: Dataset, input_column: str, fn_kwargs: Dict[str, Any], batch_size: int):
+def create_dataloader(trans_pair_ds: Dataset, input_column: str, fn_kwargs: Dict[str, Any],
+                      batch_size: int) -> DataLoader:
     trans_pair_ds = trans_pair_ds.map(tokenize, batched=True, input_columns=[input_column],
                                       fn_kwargs=fn_kwargs)
     trans_pair_ds = trans_pair_ds.with_format('torch', columns=["input_ids", "original_text"])
-    test_loader = DataLoader(trans_pair_ds, num_workers=2, batch_size=batch_size, drop_last=False, pin_memory=True)
+    test_loader = DataLoader(trans_pair_ds, num_workers=4, batch_size=batch_size, drop_last=False, pin_memory=True)
     return test_loader
 
 
@@ -112,7 +117,7 @@ def compute_bleu_auto_model(trans_pair_ds: Dataset,
                             num_beams: int = 5,
                             device: str = "cuda:0",
                             batch_size: int = 8,
-                            bleu_type: str = "bleu"):
+                            bleu_type: str = "bleu") -> Dict[str, Any]:
     if isinstance(model, MBartForConditionalGeneration):
         return compute_bleu_mbart(trans_pair_ds, model, src_lang, tgt_lang, input_column, max_length, num_beams, device,
                                   batch_size, bleu_type)
@@ -132,8 +137,8 @@ if __name__ == '__main__':
     #
     dev = "cuda:0" if torch.cuda.is_available() else "cpu"
     #     # tok_en = MBartTokenizer.from_pretrained("facebook/mbart-large-cc25", lang1="en_XX", lang2="fr_XX")
-    model = T5ForConditionalGeneration.from_pretrained(
-        "t5-small").to(dev)
+    model = MBartForConditionalGeneration.from_pretrained(
+        "/home/n.dallanoce/PyCharm/pretraining/weights/mbart_ft_en-fr/checkpoint-300000").to(dev)
 
     translation_ds = load_dataset("wmt14", "fr-en",
                                   cache_dir="/data/n.dallanoce/wmt14",
@@ -148,8 +153,5 @@ if __name__ == '__main__':
 
     # print(len(translation_ds))
     bleu = compute_bleu_auto_model(translation_ds, model, src_lang="en", tgt_lang="fr", device=dev, num_beams=5,
-                                   batch_size=64, bleu="sacrebleu")
+                                   batch_size=64, bleu_type="sacrebleu")
     print(bleu)
-#
-# # pipe = pipeline(model=model, task="translation", tokenizer=tok_en, device="cuda:0")
-# # text_translated = pipe("How are you?", lang1="en_XX", lang2="fr_XX")

@@ -47,10 +47,11 @@ class MBartTrainer(Seq2SeqTrainer):
         src_tgt_langs = metric_key_prefix.split("_")
         src_lang, tgt_lang = src_tgt_langs[1], src_tgt_langs[2]
         for i in range(2):
-            bleu_score = compute_bleu_mbart(eval_dataset, self.model,
-                                            src_lang=src_lang,
-                                            tgt_lang=tgt_lang)["bleu"] * 100
-            eval_metrics[f"eval_bleu_{src_lang}_{tgt_lang}"] = bleu_score
+            bleu_score: Dict[str, Any] = compute_bleu_mbart(eval_dataset, self.model,
+                                                            src_lang=src_lang,
+                                                            tgt_lang=tgt_lang)
+            metric_key = next(iter(bleu_score))
+            eval_metrics[f"eval_bleu_{src_lang}_{tgt_lang}"] = bleu_score[metric_key]
             src_lang, tgt_lang = tgt_lang, src_lang
 
         self.log(eval_metrics)

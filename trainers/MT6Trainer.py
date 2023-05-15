@@ -18,16 +18,18 @@ from utilities.utility import collate_pad, collate_torch_iterable, collate_pad_m
 
 class MT6Trainer(Seq2SeqTrainer):
 
-    def __init__(self, model: Union[PreTrainedModel, nn.Module] = None, args: TrainingArguments = None,
+    def __init__(self, task: str, model: Union[PreTrainedModel, nn.Module] = None, args: TrainingArguments = None,
                  data_collator: Optional[DataCollator] = None, train_dataset: Optional[Dataset] = None,
                  eval_dataset: Optional[Dataset] = None, tokenizer: Optional[PreTrainedTokenizerBase] = None,
                  model_init: Callable[[], PreTrainedModel] = None,
                  compute_metrics: Optional[Callable[[EvalPrediction], Dict]] = None,
                  callbacks: Optional[List[TrainerCallback]] = None,
                  optimizers: Tuple[torch.optim.Optimizer, torch.optim.lr_scheduler.LambdaLR] = (None, None),
-                 preprocess_logits_for_metrics: Callable[[torch.Tensor, torch.Tensor], torch.Tensor] = None):
+                 preprocess_logits_for_metrics: Callable[[torch.Tensor, torch.Tensor], torch.Tensor] = None
+                 ):
         super().__init__(model, args, data_collator, train_dataset, eval_dataset, tokenizer, model_init,
                          compute_metrics, callbacks, optimizers, preprocess_logits_for_metrics)
+        self.labels = ["labels_pnat", "labels_tsc"] if task == "pretraining" else ["labels"]
 
     def get_train_dataloader(self) -> DataLoader:
 
@@ -36,14 +38,14 @@ class MT6Trainer(Seq2SeqTrainer):
         if type(self.train_dataset) == datasets.iterable_dataset.IterableDataset or isinstance(self.train_dataset,
                                                                                                IterableDataset):
             data_loader = DataLoader(self.train_dataset,
-                                     collate_fn=partial(collate_pad_mt6,
+                                     collate_fn=partial(collate_pad_mt6, labels = self.labels,
                                                         pad_token_id=self.model.config.pad_token_id, num_workers=1),
                                      batch_size=self.args.per_device_train_batch_size,
                                      pin_memory=self.args.dataloader_pin_memory)
 
         else:
             data_loader = DataLoader(self.train_dataset,
-                                     collate_fn=partial(collate_pad, pad_token_id=self.model.config.pad_token_id),
+                                     collate_fn=partial(collate_pad_mt6, labels = self.labels, pad_token_id=self.model.config.pad_token_id),
                                      batch_size=self.args.per_device_train_batch_size,
                                      drop_last=self.args.dataloader_drop_last,
                                      num_workers=self.args.dataloader_num_workers,
@@ -91,19 +93,21 @@ class MT6Trainer(Seq2SeqTrainer):
             bleu_score = compute_bleu_mt6(eval_dataset, self.model,
                                           src_lang=src_lang,
                                           tgt_lang=tgt_lang,
-                                          batch_size=32)["bleu"] * 100
-            eval_metrics[f"eval_bleu_{src_lang}_{tgt_lang}"] = bleu_score
+                                          batch_size=32)
+            metric_key = next(iter(bleu_score))
+            eval_metrics[f"eval_bleu_{src_lang}_{tgt_lang}"] = bleu_score[metric_key]
             src_lang, tgt_lang = tgt_lang, src_lang
 
         self.log(eval_metrics)
         return eval_metrics
 
     def compute_loss(self, model, inputs, return_outputs=False):
-        if "loss" in self.args.metric_for_best_model:
+        if self.args.metric_for_best_model is None or "loss" in self.args.metric_for_best_model:
             loss = self.compute_mt6_loss(model, inputs, return_outputs)
             return loss
         else:
-            return super().compute_loss(model, inputs, return_outputs)
+            inp = inputs[0]
+            return super().compute_loss(model, inp, return_outputs)
 
     def compute_mt6_loss(self, model, inputs, return_outputs):
         total_loss: List[torch.Tensor] = []
@@ -114,18 +118,18 @@ class MT6Trainer(Seq2SeqTrainer):
             labels_names.append(label_key)
             dict_inp: Dict[str, torch.Tensor] = {'input_ids': inp['input_ids'], 'attention_mask': inp['attention_mask'],
                                                  'labels': inp[label_key]}
-            loss: torch.Tensor = super().compute_loss(model, dict_inp, return_outputs)
-            # outputs = model(**dict_inp)
-            # loss = outputs["loss"] if isinstance(outputs, dict) else outputs[0]
+            #loss: torch.Tensor = super().compute_loss(model, dict_inp, return_outputs)
+            outputs = model(**dict_inp)
+            loss = outputs["loss"] if isinstance(outputs, dict) else outputs[0]
             total_loss.append(loss)
         stack_losses: torch.Tensor = torch.stack(total_loss)
         loss: torch.Tensor = torch.sum(stack_losses, dim=0)
         if self.state.global_step % self.args.logging_steps == 0 and self.state.global_step > 0:
             with torch.no_grad():
-                if stack_losses.shape[0] > 1:
+                if stack_losses.ndim > 1:
                     mean_losses: torch.Tensor = torch.mean(stack_losses, dim=1)
                 else:
-                    mean_losses: torch.Tensor = loss
+                    mean_losses: torch.Tensor = stack_losses
                 for i, lab_name in enumerate(labels_names):
-                    self.log({lab_name: float(mean_losses[i])})
+                    self.log({lab_name.replace("labels", "loss"): float(mean_losses[i])})
         return loss

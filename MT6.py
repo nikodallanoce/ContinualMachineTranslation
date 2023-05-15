@@ -60,7 +60,7 @@ class MT6(MT5ForConditionalGeneration):
         if self.model_parallel:
             torch.cuda.set_device(self.decoder.first_device)
 
-        pnat_labels = False if labels is None else (labels.ndim == 3 and labels.shape[1] > 1)
+        pnat_labels = False if labels is None else (labels.ndim == 3)
         decoder_iterations = labels.shape[1] if pnat_labels else 1
 
         lm_logits, decoder_outputs = None, None

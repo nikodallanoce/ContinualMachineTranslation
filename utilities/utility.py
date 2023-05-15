@@ -7,21 +7,35 @@ from torch.nn.utils.rnn import pad_sequence
 from torch.nn.functional import pad
 
 
-def collate_pad_mt6(batch: List[Dict[str, Tensor]], pad_token_id: int, num_workers: int = 1):
-    batch_pnat_lst: List[Dict[str, Tensor]] = []
-    batch_transl_lst: List[Dict[str, Tensor]] = []
+def collate_pad_mt6(batch: List[Dict[str, Tensor]], labels: List[str], pad_token_id: int, num_workers: int = 1):
+    # batch_pnat_lst: List[Dict[str, Tensor]] = []
+    # batch_transl_lst: List[Dict[str, Tensor]] = []
+    lab_batch: Dict[str, List[Dict[str, Tensor]]] = {}
+    for lab_name in labels:
+        lab_batch[lab_name] = []
+
     elem: Dict[str, Tensor]
     for elem in batch:
-        if "labels_pnat" in elem:
-            batch_pnat_lst.append(elem)
+        if labels[0] in elem:
+            lab_batch[labels[0]].append(elem)
+        elif labels[1] in elem:
+            lab_batch[labels[1]].append(elem)
         else:
-            batch_transl_lst.append(elem)
+            raise KeyError("Provided labels and labels in the batch do not match!")
 
-    batched_pnat = collate_torch_iterable(batch_pnat_lst, pad_token_id, num_workers=num_workers, labels_name="labels_pnat")
-    if len(batch_transl_lst) > 0:
-        batched_transl = collate_torch_iterable(batch_transl_lst, pad_token_id, num_workers=num_workers, labels_name="labels_transl")
-        return [batched_pnat, batched_transl]
-    return [batched_pnat]
+    return_list = []
+    for lab_name, lab_lst in lab_batch.items():
+        if len(lab_lst) > 0:
+            return_list.append(collate_pad(lab_lst, pad_token_id, labels_name=lab_name))
+    return return_list
+
+    # batched_pnat = collate_torch_iterable(batch_pnat_lst, pad_token_id, num_workers=num_workers,
+    #                                       labels_name=labels[0])
+    # if len(batch_transl_lst) > 0:
+    #     batched_transl = collate_torch_iterable(batch_transl_lst, pad_token_id, num_workers=num_workers,
+    #                                             labels_name=labels[1])
+    #     return [batched_pnat, batched_transl]
+    # return [batched_pnat]
 
 
 def collate_pad(batch: List[Dict[str, Tensor]], pad_token_id: int, labels_name: str = 'labels') -> Dict[str, Tensor]:

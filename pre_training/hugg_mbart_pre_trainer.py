@@ -105,15 +105,7 @@ if __name__ == '__main__':
                             cache_dir="/data/n.dallanoce/cc100/huggingface",
                             split=f"train[:30000000]",
                             verification_mode='no_checks')
-    # optimizer = Adam(model.parameters(), eps=1e-6, betas=(0.9, 0.98))
-    # optimizer = Adam(model.parameters())
-    # lr_scheduler = transformers.get_constant_schedule(optimizer)
-    # lr_scheduler = get_scheduler("linear", optimizer=optimizer, num_training_steps=43740, num_warmup_steps=0)
-    # lr_scheduler = get_scheduler("linear", optimizer=optimizer, num_training_steps=500000, num_warmup_steps=0)
-    # cc100_fr.remove_columns(["id"])
-    # cc100_en.remove_columns(["id"])
-    # cc100_en = cc100_en.add_column("lang1", ["en"] * len(cc100_en))
-    # cc100_fr = cc100_fr.add_column("lang1", ["fr"] * len(cc100_fr))
+
     en_pre_train_ds = MBartPreTrainingDataset(cc100_en, tok_en, input_max_length=128)
     fr_pre_train_ds = MBartPreTrainingDataset(cc100_fr, tok_fr, input_max_length=128)
     es_pre_train_ds = MBartPreTrainingDataset(cc100_es, tok_es, input_max_length=128)
