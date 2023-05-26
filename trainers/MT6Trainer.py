@@ -38,14 +38,15 @@ class MT6Trainer(Seq2SeqTrainer):
         if type(self.train_dataset) == datasets.iterable_dataset.IterableDataset or isinstance(self.train_dataset,
                                                                                                IterableDataset):
             data_loader = DataLoader(self.train_dataset,
-                                     collate_fn=partial(collate_pad_mt6, labels = self.labels,
+                                     collate_fn=partial(collate_pad_mt6, labels=self.labels,
                                                         pad_token_id=self.model.config.pad_token_id, num_workers=1),
                                      batch_size=self.args.per_device_train_batch_size,
                                      pin_memory=self.args.dataloader_pin_memory)
 
         else:
             data_loader = DataLoader(self.train_dataset,
-                                     collate_fn=partial(collate_pad_mt6, labels = self.labels, pad_token_id=self.model.config.pad_token_id),
+                                     collate_fn=partial(collate_pad_mt6, labels=self.labels,
+                                                        pad_token_id=self.model.config.pad_token_id),
                                      batch_size=self.args.per_device_train_batch_size,
                                      drop_last=self.args.dataloader_drop_last,
                                      num_workers=self.args.dataloader_num_workers,
@@ -118,7 +119,7 @@ class MT6Trainer(Seq2SeqTrainer):
             labels_names.append(label_key)
             dict_inp: Dict[str, torch.Tensor] = {'input_ids': inp['input_ids'], 'attention_mask': inp['attention_mask'],
                                                  'labels': inp[label_key]}
-            #loss: torch.Tensor = super().compute_loss(model, dict_inp, return_outputs)
+            # loss: torch.Tensor = super().compute_loss(model, dict_inp, return_outputs)
             outputs = model(**dict_inp)
             loss = outputs["loss"] if isinstance(outputs, dict) else outputs[0]
             total_loss.append(loss)

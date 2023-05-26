@@ -13,6 +13,7 @@ import os
 
 PREFIX_TASK = {'en': "English", 'fr': "French", 'de': "German", 'es': "Spanish"}
 
+
 #os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"  # see issue #152
 #os.environ["CUDA_VISIBLE_DEVICES"] = "3"
 
@@ -138,12 +139,18 @@ if __name__ == '__main__':
     dev = "cuda:0" if torch.cuda.is_available() else "cpu"
     #     # tok_en = MBartTokenizer.from_pretrained("facebook/mbart-large-cc25", lang1="en_XX", lang2="fr_XX")
     model = MBartForConditionalGeneration.from_pretrained(
-        "/home/n.dallanoce/PyCharm/pretraining/weights/mbart_ft_en-fr/checkpoint-300000").to(dev)
+        "/home/n.dallanoce/PyCharm/pretraining/weights/S2_mbart_pre_es_ft_en-fr(MF3-1)/checkpoint-100000").to(dev)
 
     translation_ds = load_dataset("wmt14", "fr-en",
                                   cache_dir="/data/n.dallanoce/wmt14",
                                   split=f"test",
                                   verification_mode='no_checks')
+
+    # translation_ds = load_dataset("yhavinga/ccmatrix", "en-es",
+    #                               cache_dir="/data/n.dallanoce/cc_en_es",
+    #                               split=f"train[28000000:28003000]",
+    #                               verification_mode='no_checks')
+    # translation_ds = translation_ds.with_format("torch", columns=['translation'])
 
     # translation_ds = load_dataset("nikodallanoce/wmt10", "de-en",
     #                               cache_dir="/data/n.dallanoce/wmt10",
@@ -153,5 +160,5 @@ if __name__ == '__main__':
 
     # print(len(translation_ds))
     bleu = compute_bleu_auto_model(translation_ds, model, src_lang="en", tgt_lang="fr", device=dev, num_beams=5,
-                                   batch_size=64, bleu_type="sacrebleu")
+                                   batch_size=16, bleu_type="bleu")
     print(bleu)

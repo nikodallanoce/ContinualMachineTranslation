@@ -21,7 +21,7 @@ import os
 
 # os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"  # see issue #152
 # os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-project_name = "stream_mt6_ft_en-fr_hilr"
+project_name = "mt6_pre_de_ft_en-fr(MF1-2)"
 os.environ["WANDB_PROJECT"] = project_name
 
 # save your trained model checkpoint to wandb
@@ -41,14 +41,14 @@ if __name__ == '__main__':
                                              optim="adamw_torch",
                                              learning_rate=1e-3,
                                              lr_scheduler_type="linear",
-                                             max_steps=int(3e5),
+                                             max_steps=int(1e5),
                                              logging_steps=500,
-                                             save_steps=20000,
+                                             save_steps=10000,
                                              save_strategy="steps",
                                              log_level="info",
                                              load_best_model_at_end=True,
                                              evaluation_strategy="steps",
-                                             eval_steps=20000,
+                                             eval_steps=10000,
                                              fp16=True,
                                              dataloader_drop_last=True,
                                              dataloader_pin_memory=True,
@@ -90,7 +90,7 @@ if __name__ == '__main__':
                                                 324665884})
 
     model = MT5ForConditionalGeneration.from_pretrained(
-        "/home/n.dallanoce/PyCharm/pretraining/weights/mt6_pre_en-fr/checkpoint-100000")
+        "/home/n.dallanoce/PyCharm/pretraining/weights/mt6_pre_en-fr_de(M2)/checkpoint-100000")
 
     # model = MT5ForConditionalGeneration(
     #     MT5Config(num_layers=6, d_model=512, num_heads=8, vocab_size=len(tok_en), max_length=128))

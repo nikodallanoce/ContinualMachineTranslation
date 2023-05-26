@@ -20,8 +20,8 @@ from trainers.MT6Trainer import MT6Trainer
 import os
 
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"  # see issue #152
-#os.environ["CUDA_VISIBLE_DEVICES"] = "0,1"
-project_name = "deltalm_pre_en-fr"
+# os.environ["CUDA_VISIBLE_DEVICES"] = "0,1"
+project_name = "mt6_pre_en-fr_de(M2)"
 os.environ["WANDB_PROJECT"] = project_name
 
 # save your trained model checkpoint to wandb
@@ -43,14 +43,14 @@ def run_server():
                                              learning_rate=1e-4,
                                              lr_scheduler_type="linear",
                                              max_steps=int(1e5),
-                                             logging_steps=100,
+                                             logging_steps=500,
                                              save_steps=10000,
                                              save_strategy="steps",
                                              log_level="info",
                                              fp16=True,
                                              dataloader_drop_last=True,
                                              dataloader_pin_memory=True,
-                                             dataloader_num_workers=2,
+                                             dataloader_num_workers=4,
                                              # load_best_model_at_end=True,
                                              # prediction_loss_only=True,
                                              save_total_limit=1,
@@ -64,10 +64,8 @@ def run_server():
 
 
 if __name__ == '__main__':
-    size = str(int(2 ** 24))
+    max_inp_len = 133
     tok_en = MT5TokenizerFast.from_pretrained("nikodallanoce/mt5-cc4-vanilla-32k-5")
-    model = MT6(MT5Config(num_layers=6, d_model=512, num_heads=8, vocab_size=len(tok_en), max_length=128))
-    # model = MT6.from_pretrained("/home/n.dallanoce/PyCharm/pretraining/weights/mt6_pre_en-fr/checkpoint-100000")
     training_args = run_server()
 
     # pre_train_ds = MT6PreTrainingDataset(pre_train_ds, tok_en, noise_fn=MT5NoiseFunction())
@@ -109,11 +107,11 @@ if __name__ == '__main__':
                             split=f"train[:20000000]",
                             verification_mode='no_checks')
 
-    en_pre_train_ds = MT6PreTrainingDataset(cc100_en, tok_en, input_max_length=128,
-                                            noise_fn=MT5NoiseFunction(noise_density=0.15))
-    fr_pre_train_ds = MT6PreTrainingDataset(cc100_fr, tok_en, input_max_length=128,
-                                            noise_fn=MT5NoiseFunction(noise_density=0.15))
-    de_pre_train_ds = MT6PreTrainingDataset(cc100_de, tok_en, input_max_length=128)
+    en_pre_train_ds = MT6PreTrainingDataset(cc100_en, tok_en, input_max_length=max_inp_len,
+                                            noise_fn=MT6NoiseFunction(n_groups=2, noise_density=0.5))
+    fr_pre_train_ds = MT6PreTrainingDataset(cc100_fr, tok_en, input_max_length=max_inp_len,
+                                            noise_fn=MT6NoiseFunction(n_groups=2, noise_density=0.5))
+    de_pre_train_ds = MT6PreTrainingDataset(cc100_de, tok_en, input_max_length=max_inp_len)
 
     en_fr_transl_ds = load_dataset("yhavinga/ccmatrix", "en-fr",
                                    cache_dir="/data/n.dallanoce/cc_en_fr",
@@ -124,8 +122,9 @@ if __name__ == '__main__':
                                    split=f"train[0:20000000]",
                                    verification_mode='no_checks')
 
-    en_fr_tsc_ds = MT6TranslationDataset(en_fr_transl_ds, tok_en, src_lang="en", tgt_lang="fr", input_max_length=128,
-                                         noise_fn=MT5NoiseFunction(noise_density=0.3),
+    en_fr_tsc_ds = MT6TranslationDataset(en_fr_transl_ds, tok_en, src_lang="en", tgt_lang="fr",
+                                         input_max_length=max_inp_len,
+                                         noise_fn=MT6NoiseFunction(noise_density=0.5, n_groups=2),
                                          skip_rows={2372581, 6968567, 10821748, 11060884, 15767927, 25424386, 29725453,
                                                     45747545, 47137798, 50129051, 59177023, 59929203, 61511560,
                                                     75542580,
@@ -146,8 +145,9 @@ if __name__ == '__main__':
                                                     324665884
                                                     })
 
-    en_de_tsc_ds = MT6TranslationDataset(en_de_transl_ds, tok_en, src_lang="en", tgt_lang="de", input_max_length=128,
-                                         noise_fn=MT6NoiseFunction(n_groups=3, noise_density=0.5, pnat=True),
+    en_de_tsc_ds = MT6TranslationDataset(en_de_transl_ds, tok_en, src_lang="en", tgt_lang="de",
+                                         input_max_length=max_inp_len,
+                                         noise_fn=MT6NoiseFunction(n_groups=2, noise_density=0.5, pnat=True),
                                          skip_rows={2801169, 3015352, 19775415, 20367662, 20785493, 23611708, 25969951,
                                                     32771958, 33590564, 33799669, 38165983, 38349415, 42732422,
                                                     45639868, 46533951, 48154585, 51122630, 52569871, 53253769,
@@ -165,7 +165,11 @@ if __name__ == '__main__':
                                                     111265110, 145839309, 164197978, 185766813, 188391705, 198131661,
                                                     198435949, 199964247, 230948265, 240673484, 245361151, 246664703})
 
-    train_ds = ConcatDataset([en_pre_train_ds, fr_pre_train_ds, en_fr_tsc_ds])
+    # model = MT6(
+    #     MT5Config(num_layers=6, d_model=512, num_heads=8, d_ff=2048, vocab_size=len(tok_en), max_length=max_inp_len))
+    model = MT6.from_pretrained("/home/n.dallanoce/PyCharm/pretraining/weights/mt6_pre_en-fr(M1)/checkpoint-100000")
+
+    train_ds = ConcatDataset([de_pre_train_ds, en_de_tsc_ds])
     trainer = MT6Trainer("pretraining", model, training_args,
                          train_dataset=train_ds,
                          # optimizers=(optimizer, lr_scheduler)

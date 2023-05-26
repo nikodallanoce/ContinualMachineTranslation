@@ -1,10 +1,11 @@
 from typing import Dict
 
 import torch
+import transformers
 from torch.utils.data import ConcatDataset
 from datasets import load_dataset
-from transformers import Seq2SeqTrainingArguments, MBartTokenizer, MBartConfig, \
-    MBartForConditionalGeneration, Seq2SeqTrainer, EvalPrediction, AutoTokenizer
+from transformers import Seq2SeqTrainingArguments, MBartConfig, \
+    MBartForConditionalGeneration, EvalPrediction, AutoTokenizer, EarlyStoppingCallback
 import sys
 
 sys.path.insert(0, '/home/n.dallanoce/PyCharm/pretraining')
@@ -12,7 +13,7 @@ from custom_datasets.MBartTranslationDataset import MBartTranslationDataset
 from trainers.MBartTrainer import MBartTrainer
 import os
 
-project_name = "mbart_ft_en-es(Mf3)"
+project_name = "1M_mbart_ft_en-fr(MF1)"
 os.environ["WANDB_PROJECT"] = project_name
 
 # save your trained model checkpoint to wandb
@@ -37,8 +38,6 @@ def compute_bleu_metric(prediction: EvalPrediction):
 
 
 def run_server():
-    model = MBartForConditionalGeneration.from_pretrained(
-        "/home/n.dallanoce/PyCharm/pretraining/weights/mbart_pre_en-fr_de_es/checkpoint-100000")
     training_args = Seq2SeqTrainingArguments(f"/home/n.dallanoce/PyCharm/pretraining/weights/{project_name}",
                                              overwrite_output_dir=False,
                                              label_names=['labels'],
@@ -48,88 +47,30 @@ def run_server():
                                              optim="adamw_torch",
                                              learning_rate=6e-4,
                                              # auto_find_batch_size=True,
-                                             per_device_train_batch_size=128,
+                                             per_device_train_batch_size=96, # 128
                                              gradient_accumulation_steps=1,
-                                             # num_train_epochs=60,
-                                             max_steps=int(3e5),
-                                             logging_steps=500,
-                                             save_steps=20000,
+                                             num_train_epochs=3,  # to change
+                                             # max_steps=int(1e5),
+                                             logging_steps=100,  # 500
+                                             # save_steps=10000, # to restore
                                              log_level="info",
-                                             save_strategy="steps",
+                                             save_strategy="epoch",  # steps
                                              load_best_model_at_end=True,
-                                             evaluation_strategy="steps",
-                                             eval_steps=20000,
+                                             evaluation_strategy="epoch",  # steps
+                                             # eval_steps=10000, # to restore
                                              fp16=True,
                                              dataloader_drop_last=True,
                                              dataloader_pin_memory=True,
-                                             dataloader_num_workers=6,
+                                             dataloader_num_workers=4,
                                              # prediction_loss_only=True,
                                              save_total_limit=1,
-                                             metric_for_best_model="bleu_en_es",
-                                             greater_is_better=True,
-                                             report_to=["wandb"],
-                                             ignore_data_skip=True
-                                             )
-    translation_ds = load_dataset("yhavinga/ccmatrix", "en-fr",
-                                  cache_dir="/data/n.dallanoce/cc_en_fr",
-                                  split=f"train[0:25000000]",
-                                  verification_mode='no_checks')
-
-    val_ds = load_dataset("wmt14", "fr-en",
-                          cache_dir="/data/n.dallanoce/wmt14",
-                          split=f"validation",
-                          verification_mode='no_checks')
-
-    return training_args, translation_ds, model, val_ds.with_format("torch", columns=["translation"])
-
-
-def run_local():
-    training_args = Seq2SeqTrainingArguments("D:\\trainer\\mbart_en_fr",
-                                             overwrite_output_dir=True,
-                                             label_names=['labels'],
-                                             do_train=True,
-                                             do_eval=True,
-                                             label_smoothing_factor=0.1,
-                                             warmup_steps=2500,
-                                             optim="adamw_torch",
-                                             learning_rate=5e-5,
-                                             # auto_find_batch_size=True,
-                                             per_device_train_batch_size=2,
-                                             gradient_accumulation_steps=1,
-                                             num_train_epochs=40,
-                                             # max_steps=int(5e5),
-                                             logging_steps=10,
-                                             save_steps=10,
-                                             log_level="info",
-                                             evaluation_strategy="steps",
-                                             eval_steps=10,
-                                             save_strategy="steps",
-                                             fp16=True,
-                                             dataloader_drop_last=True,
-                                             dataloader_pin_memory=True,
-                                             dataloader_num_workers=1,
-                                             # prediction_loss_only=True,
-                                             save_total_limit=2,
                                              metric_for_best_model="bleu_en_fr",
                                              greater_is_better=True,
-                                             report_to=["tensorboard"]
+                                             report_to=["wandb"],
+                                             ignore_data_skip=False
                                              )
-    dataset = load_dataset("wmt14", "fr-en",
-                           cache_dir="D:\\datasets\\wmt14",
-                           split=f"train[0:2048]",
-                           verification_mode='no_checks')
 
-    val_ds = load_dataset("wmt14", "fr-en",
-                          cache_dir="D:\\datasets\\wmt14",
-                          split=f"validation",
-                          verification_mode='no_checks')
-
-    mbart_config = MBartConfig(encoder_layers=6, decoder_layers=6,
-                               encoder_ffn_dim=2048, decoder_ffn_dim=2048,
-                               encoder_attention_heads=8, decoder_attention_heads=8,
-                               d_model=512, max_length=128, vocab_size=tok_en_fr.vocab_size, dropout=0.2)
-    model: MBartForConditionalGeneration = MBartForConditionalGeneration(mbart_config)
-    return training_args, dataset, model, val_ds.with_format("torch", columns=["translation"])
+    return training_args
 
 
 # os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"  # see issue #152
@@ -144,16 +85,23 @@ if __name__ == '__main__':
     tok_name = "nikodallanoce/mbart-cc4-vanilla-32k-5"
     tok_en_fr = AutoTokenizer.from_pretrained(tok_name, src_lang="en_XX", tgt_lang="fr_XX")
     tok_fr_en = AutoTokenizer.from_pretrained(tok_name, src_lang="fr_XX", tgt_lang="en_XX")
-    training_args, translation_ds, model, val_ds_fr_en = run_server()
+    training_args = run_server()
 
-    en_fr_ds = MBartTranslationDataset(translation_ds, tok_en_fr, src_lang="en", trg_lang="fr", input_max_length=128,
+    translation_ds_en_fr = load_dataset("yhavinga/ccmatrix", "en-fr",
+                                        cache_dir="/data/n.dallanoce/cc_en_fr",
+                                        split=f"train[0:500000]",
+                                        verification_mode='no_checks')
+
+    en_fr_ds = MBartTranslationDataset(translation_ds_en_fr, tok_en_fr, src_lang="en", trg_lang="fr",
+                                       input_max_length=128,
                                        skip_rows={2372581, 6968567, 10821748, 11060884, 15767927, 25424386, 29725453,
                                                   45747545, 47137798, 50129051, 59177023, 59929203, 61511560, 75542580,
                                                   100970169, 115986518, 127680776, 141459031, 156717917, 157018533,
                                                   162558439, 164150364, 175041176, 184342700, 190148649, 190148650,
                                                   192658445, 220362372, 245452855, 256201123, 271393589, 272871204,
                                                   272877704, 281597372, 294584774, 296244867, 321887045})
-    fr_en_ds = MBartTranslationDataset(translation_ds, tok_fr_en, src_lang="fr", trg_lang="en", input_max_length=128,
+    fr_en_ds = MBartTranslationDataset(translation_ds_en_fr, tok_fr_en, src_lang="fr", trg_lang="en",
+                                       input_max_length=128,
                                        skip_rows={35870050, 48145532, 52684654, 58751416, 58882125, 65601877, 67930837,
                                                   77241694, 92977227, 110216804, 128101180, 134271264, 141335940,
                                                   163685146, 170148774, 174846035, 175041176, 178472316, 187909576,
@@ -223,31 +171,46 @@ if __name__ == '__main__':
                                                   393342927, 398415139, 399539622, 404908528, 407859230})
 
     # eval_tokenizers: Dict[str, MBartTokenizer] = {"en_fr": tok_en_fr, "fr_en": tok_fr_en}
+    val_ds_fr_en = load_dataset("wmt14", "fr-en",
+                                cache_dir="/data/n.dallanoce/wmt14",
+                                split=f"validation",
+                                verification_mode='no_checks')
+
     val_ds_de_en = load_dataset("wmt14", "de-en",
                                 cache_dir="/data/n.dallanoce/wmt14",
                                 split=f"validation",
                                 verification_mode='no_checks')
 
     val_ds_name = "nikodallanoce/wmt14"
-    val_ds_es_en = load_dataset(val_ds_name, "es-en",
-                                cache_dir="/data/n.dallanoce/wmt14",
-                                split=f"validation",
-                                verification_mode='no_checks', use_auth_token=True)
+    # val_ds_es_en = load_dataset(val_ds_name, "es-en",
+    #                             cache_dir="/data/n.dallanoce/wmt14",
+    #                             split=f"validation",
+    #                             verification_mode='no_checks', use_auth_token=True)
+    val_ds_es_en = load_dataset("yhavinga/ccmatrix", "en-es",
+                                cache_dir="/data/n.dallanoce/cc_en_es",
+                                split=f"train[28000000:28003000]",
+                                verification_mode='no_checks').with_format("torch", columns=['translation'])
     val_ds_config_en_fr = val_ds_fr_en.config_name.replace("-", "_")  # works with wmt14 datasets
     val_ds_config_en_de = val_ds_de_en.config_name.replace("-", "_")
     val_ds_config_en_es = val_ds_es_en.config_name.replace("-", "_")
-    tgt_lang = "es"
-    translation_ds_de = load_dataset("yhavinga/ccmatrix", f"en-{tgt_lang}",
-                                     cache_dir=f"/data/n.dallanoce/cc_en_{tgt_lang}",
-                                     split=f"train[0:25000000]",
-                                     verification_mode='no_checks')
+    # tgt_lang = "es"
+    # translation_ds_de = load_dataset("yhavinga/ccmatrix", f"en-{tgt_lang}",
+    #                                  cache_dir=f"/data/n.dallanoce/cc_en_{tgt_lang}",
+    #                                  split=f"train[0:25000000]",
+    #                                  verification_mode='no_checks')
+    model = MBartForConditionalGeneration.from_pretrained(
+        "/home/n.dallanoce/PyCharm/pretraining/weights/mbart_pre_de/checkpoint-185000")
+    mbart_config = MBartConfig(encoder_layers=6, decoder_layers=6,
+                               encoder_ffn_dim=2048, decoder_ffn_dim=2048,
+                               encoder_attention_heads=8, decoder_attention_heads=8,
+                               d_model=512, max_length=128, vocab_size=tok_en_de.vocab_size, dropout=0.1)
+    #model: MBartForConditionalGeneration = MBartForConditionalGeneration(mbart_config)
     trainer = MBartTrainer(model, training_args,
-                           train_dataset=ConcatDataset([en_es_ds, es_en_ds]),
+                           train_dataset=ConcatDataset([en_fr_ds]),
                            # eval_dataset={'bleu_en_fr': val_ds, 'bleu_fr_en': val_ds},  # , 'bleu_fr_en': val_ds},
-                           eval_dataset={f"{val_ds_config_en_de}": val_ds_de_en,
-                                         f"{val_ds_config_en_es}": val_ds_es_en,
-                                         }
-                           # optimizers=(optimizer, lr_scheduler)
+                           eval_dataset={f"{val_ds_config_en_fr}": val_ds_fr_en
+                                         },
+                           callbacks=[EarlyStoppingCallback(early_stopping_patience=4)]
                            )
 
     trainer.train(resume_from_checkpoint=False)
