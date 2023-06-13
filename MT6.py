@@ -5,14 +5,14 @@ import torch
 from torch import nn, Tensor
 from torch.nn import CrossEntropyLoss
 from torch.nn.functional import pad
-from transformers import MT5ForConditionalGeneration, MT5Config, T5Config
+from transformers import MT5ForConditionalGeneration, MT5Config, T5Config, T5ForConditionalGeneration
 from tqdm import tqdm
 from transformers.modeling_outputs import Seq2SeqLMOutput, BaseModelOutput
 
 
 class MT6(MT5ForConditionalGeneration):
 
-    def __init__(self, config: MT5Config):
+    def __init__(self, config: Union[MT5Config, T5Config]):
         super().__init__(config)
 
     def forward(

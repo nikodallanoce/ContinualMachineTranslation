@@ -12,14 +12,14 @@ import datasets
 
 class MBartTranslationDataset(Dataset):
 
-    def __init__(self, hugg_dataset: datasets.Dataset, tokenizer: MBartTokenizer, trg_lang: str,
+    def __init__(self, hugg_dataset: datasets.Dataset, tokenizer: MBartTokenizer, tgt_lang: str,
                  src_lang: str = 'en', ds_field="translation", input_max_length: int = 128, min_words: int = 4,
                  skip_rows: Set[int] = None):
         super(MBartTranslationDataset, self).__init__()
 
         self.hugg_dataset: datasets.Dataset = hugg_dataset
         self.tokenizer: PreTrainedTokenizer = tokenizer
-        self.trg_lang: str = trg_lang
+        self.tgt_lang: str = tgt_lang
         self.src_lang: str = src_lang
         self.ds_field: str = ds_field
         self.input_max_length: int = input_max_length
@@ -31,13 +31,13 @@ class MBartTranslationDataset(Dataset):
 
     def __getitem__(self, index):
         sent = self.hugg_dataset[index][self.ds_field]
-        src, trg = sent[self.src_lang], sent[self.trg_lang]
+        src, trg = sent[self.src_lang], sent[self.tgt_lang]
 
         rng = np.random.default_rng(index)
         while len(src.split(" ")) < self.min_words or index in self.skip_rows:
             index = rng.integers(0, len(self.hugg_dataset) - 1, dtype=int)
             sent = self.hugg_dataset[index][self.ds_field]
-            src, trg = sent[self.src_lang], sent[self.trg_lang]
+            src, trg = sent[self.src_lang], sent[self.tgt_lang]
 
         outputs = self.tokenizer(src, text_target=trg, return_special_tokens_mask=False,
                                  add_special_tokens=True, truncation=True,

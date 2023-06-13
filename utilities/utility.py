@@ -7,7 +7,7 @@ from torch.nn.utils.rnn import pad_sequence
 from torch.nn.functional import pad
 
 
-def collate_pad_mt6(batch: List[Dict[str, Tensor]], labels: List[str], pad_token_id: int, num_workers: int = 1):
+def collate_pad_mt6(batch: List[Dict[str, Tensor]], labels: List[str], pad_token_id: int):
     # batch_pnat_lst: List[Dict[str, Tensor]] = []
     # batch_transl_lst: List[Dict[str, Tensor]] = []
     lab_batch: Dict[str, List[Dict[str, Tensor]]] = {}

@@ -1,26 +1,25 @@
+import random
 from functools import partial
 from typing import Union, Optional, Callable, Dict, List, Tuple, Any
 
 import datasets
-import numpy as np
-from transformers.trainer_utils import EvalLoopOutput
 
+from pre_training.CustomTrainer import CustomTrainer
 from utilities.utility import collate_pad, collate_torch_iterable
 import torch
 
 from torch import nn, Tensor
 
-from torch.utils.data import Dataset, DataLoader, RandomSampler
+from torch.utils.data import Dataset, DataLoader, RandomSampler, ConcatDataset
 from transformers import PreTrainedModel, TrainingArguments, DataCollator, PreTrainedTokenizerBase, \
-    EvalPrediction, TrainerCallback, Seq2SeqTrainer, MBartTokenizer
-from eval.bleu_utility import compute_bleu_mbart
+    EvalPrediction, TrainerCallback
 
 
-class MBartTrainer(Seq2SeqTrainer):
+class MBartTrainer(CustomTrainer):
 
     def __init__(self, model: Union[PreTrainedModel, nn.Module] = None, args: TrainingArguments = None,
                  data_collator: Optional[DataCollator] = None, train_dataset: Optional[Dataset] = None,
-                 eval_dataset: Optional[Dataset] = None, eval_tokenizers: Dict[str, MBartTokenizer] = None,
+                 eval_dataset: Optional[Union[Dataset, Dict[str, Dataset]]] = None,
                  tokenizer: Optional[PreTrainedTokenizerBase] = None,
                  model_init: Callable[[], PreTrainedModel] = None,
                  compute_metrics: Optional[Callable[[EvalPrediction], Dict]] = None,
@@ -29,45 +28,6 @@ class MBartTrainer(Seq2SeqTrainer):
                  preprocess_logits_for_metrics: Callable[[torch.Tensor, torch.Tensor], torch.Tensor] = None):
         super().__init__(model, args, data_collator, train_dataset, eval_dataset, tokenizer, model_init,
                          compute_metrics, callbacks, optimizers, preprocess_logits_for_metrics)
-        self.eval_tokenizers: Dict[str, MBartTokenizer] = eval_tokenizers
-
-    # def get_eval_dataloader(self, eval_dataset: Optional[Dataset] = None) -> DataLoader:
-    #     return DataLoader(eval_dataset,
-    #                       collate_fn=partial(collate_pad, pad_token_id=self.model.config.pad_token_id),
-    #                       batch_size=self.args.per_device_eval_batch_size,
-    #                       drop_last=self.args.dataloader_drop_last,
-    #                       num_workers=self.args.dataloader_num_workers,
-    #                       pin_memory=False,
-    #                       shuffle=False)
-
-    def evaluate(self, eval_dataset: Optional[Dataset] = None, ignore_keys: Optional[List[str]] = None,
-                 metric_key_prefix: str = "eval", **gen_kwargs) -> Dict[str, float]:
-
-        eval_metrics: Dict[str, float] = dict()
-        src_tgt_langs = metric_key_prefix.split("_")
-        src_lang, tgt_lang = src_tgt_langs[1], src_tgt_langs[2]
-        for i in range(2):
-            bleu_score: Dict[str, Any] = compute_bleu_mbart(eval_dataset, self.model,
-                                                            src_lang=src_lang,
-                                                            tgt_lang=tgt_lang)
-            metric_key = next(iter(bleu_score))
-            eval_metrics[f"eval_bleu_{src_lang}_{tgt_lang}"] = bleu_score[metric_key]
-            src_lang, tgt_lang = tgt_lang, src_lang
-
-        self.log(eval_metrics)
-        return eval_metrics
-
-    # def evaluation_loop(self, dataloader: DataLoader, description: str, prediction_loss_only: Optional[bool] = None,
-    #                     ignore_keys: Optional[List[str]] = None, metric_key_prefix: str = "eval") -> EvalLoopOutput:
-    #     eval_metrics: Dict[str, float] = dict()
-    #     src_tgt_langs = metric_key_prefix.split("_")
-    #     # bleu_score = compute_bleu(eval_dataset, self.model,
-    #     #                           lang1=src_tgt_langs[2],
-    #     #                           lang2=src_tgt_langs[3])["bleu"] * 100
-    #     bleu_score = 32
-    #     eval_metrics[metric_key_prefix] = bleu_score
-    #
-    #     return super().evaluation_loop(dataloader, description, prediction_loss_only, ignore_keys, metric_key_prefix)
 
     def get_train_dataloader(self) -> DataLoader:
         data_loader: DataLoader

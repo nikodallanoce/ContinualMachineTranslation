@@ -1,7 +1,4 @@
 from typing import Dict
-
-import torch
-import transformers
 from torch.utils.data import ConcatDataset
 from datasets import load_dataset
 from transformers import Seq2SeqTrainingArguments, MBartConfig, \
@@ -13,7 +10,7 @@ from custom_datasets.MBartTranslationDataset import MBartTranslationDataset
 from trainers.MBartTrainer import MBartTrainer
 import os
 
-project_name = "1M_mbart_ft_en-fr(MF1)"
+project_name = "mbart_ft_en-fr-Mf1"
 os.environ["WANDB_PROJECT"] = project_name
 
 # save your trained model checkpoint to wandb
@@ -22,9 +19,9 @@ os.environ["WANDB_LOG_MODEL"] = "true"
 # turn off watch to log faster
 os.environ["WANDB_WATCH"] = "false"
 
+os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"  # see issue #152
+os.environ["CUDA_VISIBLE_DEVICES"] = "3"
 
-# os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"  # see issue #152
-# os.environ["CUDA_VISIBLE_DEVICES"] = "2,3"
 
 def compute_bleu_metric(prediction: EvalPrediction):
     eval_metrics: Dict[str, float] = dict()
@@ -39,7 +36,7 @@ def compute_bleu_metric(prediction: EvalPrediction):
 
 def run_server():
     training_args = Seq2SeqTrainingArguments(f"/home/n.dallanoce/PyCharm/pretraining/weights/{project_name}",
-                                             overwrite_output_dir=False,
+                                             overwrite_output_dir=True,
                                              label_names=['labels'],
                                              do_train=True,
                                              label_smoothing_factor=0,
@@ -47,17 +44,17 @@ def run_server():
                                              optim="adamw_torch",
                                              learning_rate=6e-4,
                                              # auto_find_batch_size=True,
-                                             per_device_train_batch_size=96, # 128
+                                             per_device_train_batch_size=8,
                                              gradient_accumulation_steps=1,
-                                             num_train_epochs=3,  # to change
-                                             # max_steps=int(1e5),
-                                             logging_steps=100,  # 500
-                                             # save_steps=10000, # to restore
+                                             # num_train_epochs=3,  # to change
+                                             max_steps=int(8e5),
+                                             logging_steps=5,  # 500
+                                             save_steps=10000,  # to restore
                                              log_level="info",
-                                             save_strategy="epoch",  # steps
+                                             save_strategy="steps",  # steps
                                              load_best_model_at_end=True,
-                                             evaluation_strategy="epoch",  # steps
-                                             # eval_steps=10000, # to restore
+                                             evaluation_strategy="steps",  # steps
+                                             eval_steps=5,  # to restore
                                              fp16=True,
                                              dataloader_drop_last=True,
                                              dataloader_pin_memory=True,
@@ -66,7 +63,7 @@ def run_server():
                                              save_total_limit=1,
                                              metric_for_best_model="bleu_en_fr",
                                              greater_is_better=True,
-                                             report_to=["wandb"],
+                                             report_to=["none"],
                                              ignore_data_skip=False
                                              )
 
@@ -89,10 +86,10 @@ if __name__ == '__main__':
 
     translation_ds_en_fr = load_dataset("yhavinga/ccmatrix", "en-fr",
                                         cache_dir="/data/n.dallanoce/cc_en_fr",
-                                        split=f"train[0:500000]",
+                                        split=f"train[0:25000000]",
                                         verification_mode='no_checks')
 
-    en_fr_ds = MBartTranslationDataset(translation_ds_en_fr, tok_en_fr, src_lang="en", trg_lang="fr",
+    en_fr_ds = MBartTranslationDataset(translation_ds_en_fr, tok_en_fr, src_lang="en", tgt_lang="fr",
                                        input_max_length=128,
                                        skip_rows={2372581, 6968567, 10821748, 11060884, 15767927, 25424386, 29725453,
                                                   45747545, 47137798, 50129051, 59177023, 59929203, 61511560, 75542580,
@@ -100,7 +97,7 @@ if __name__ == '__main__':
                                                   162558439, 164150364, 175041176, 184342700, 190148649, 190148650,
                                                   192658445, 220362372, 245452855, 256201123, 271393589, 272871204,
                                                   272877704, 281597372, 294584774, 296244867, 321887045})
-    fr_en_ds = MBartTranslationDataset(translation_ds_en_fr, tok_fr_en, src_lang="fr", trg_lang="en",
+    fr_en_ds = MBartTranslationDataset(translation_ds_en_fr, tok_fr_en, src_lang="fr", tgt_lang="en",
                                        input_max_length=128,
                                        skip_rows={35870050, 48145532, 52684654, 58751416, 58882125, 65601877, 67930837,
                                                   77241694, 92977227, 110216804, 128101180, 134271264, 141335940,
@@ -121,7 +118,7 @@ if __name__ == '__main__':
     tok_en_de = AutoTokenizer.from_pretrained(tok_name, src_lang="en_XX", tgt_lang="de_DE")
     tok_de_en = AutoTokenizer.from_pretrained(tok_name, src_lang="de_DE", tgt_lang="en_XX")
 
-    en_de_ds = MBartTranslationDataset(translation_ds_en_de, tok_en_de, src_lang="en", trg_lang="de",
+    en_de_ds = MBartTranslationDataset(translation_ds_en_de, tok_en_de, src_lang="en", tgt_lang="de",
                                        input_max_length=128,
                                        skip_rows={2801169, 3015352, 19775415, 20367662, 20785493, 23611708, 25969951,
                                                   32771958, 33590564, 33799669, 38165983, 38349415, 42732422, 45639868,
@@ -133,7 +130,7 @@ if __name__ == '__main__':
                                                   154125145, 155297361, 161224397, 175150743, 182672297, 185766813,
                                                   193096473, 202301926, 202497244, 205450756, 208256156, 219628486,
                                                   227123665})
-    de_en_ds = MBartTranslationDataset(translation_ds_en_de, tok_de_en, src_lang="de", trg_lang="en",
+    de_en_ds = MBartTranslationDataset(translation_ds_en_de, tok_de_en, src_lang="de", tgt_lang="en",
                                        input_max_length=128,
                                        skip_rows={27922110, 31580101, 32771958, 40763567, 45639868, 63058682, 72964017,
                                                   73662839, 78842480, 79531236, 83162203, 83238534, 92184955, 105831028,
@@ -148,11 +145,11 @@ if __name__ == '__main__':
     tok_en_es = AutoTokenizer.from_pretrained(tok_name, src_lang="en_XX", tgt_lang="es_XX")
     tok_es_en = AutoTokenizer.from_pretrained(tok_name, src_lang="es_XX", tgt_lang="en_XX")
 
-    en_es_ds = MBartTranslationDataset(translation_ds_en_es, tok_en_es, src_lang="en", trg_lang="es",
+    en_es_ds = MBartTranslationDataset(translation_ds_en_es, tok_en_es, src_lang="en", tgt_lang="es",
                                        input_max_length=128,
                                        skip_rows={104162920, 201875059, 220054035, 239139109, 242048881, 250889199,
                                                   299111881, 300507236, 357223245})
-    es_en_ds = MBartTranslationDataset(translation_ds_en_es, tok_es_en, src_lang="es", trg_lang="en",
+    es_en_ds = MBartTranslationDataset(translation_ds_en_es, tok_es_en, src_lang="es", tgt_lang="en",
                                        input_max_length=128,
                                        skip_rows={6751585, 7725692, 35698791, 43267448, 48075653, 48925282, 48925283,
                                                   53971646, 55073237, 56061226, 59861190, 63114112, 80366657, 80902620,
@@ -199,17 +196,16 @@ if __name__ == '__main__':
     #                                  split=f"train[0:25000000]",
     #                                  verification_mode='no_checks')
     model = MBartForConditionalGeneration.from_pretrained(
-        "/home/n.dallanoce/PyCharm/pretraining/weights/mbart_pre_de/checkpoint-185000")
+        "/home/n.dallanoce/PyCharm/pretraining/weights/mbart_ft_en-fr/checkpoint-260000")
     mbart_config = MBartConfig(encoder_layers=6, decoder_layers=6,
                                encoder_ffn_dim=2048, decoder_ffn_dim=2048,
                                encoder_attention_heads=8, decoder_attention_heads=8,
                                d_model=512, max_length=128, vocab_size=tok_en_de.vocab_size, dropout=0.1)
-    #model: MBartForConditionalGeneration = MBartForConditionalGeneration(mbart_config)
+    # model: MBartForConditionalGeneration = MBartForConditionalGeneration(mbart_config)
     trainer = MBartTrainer(model, training_args,
-                           train_dataset=ConcatDataset([en_fr_ds]),
+                           train_dataset=ConcatDataset([en_fr_ds, fr_en_ds]),
                            # eval_dataset={'bleu_en_fr': val_ds, 'bleu_fr_en': val_ds},  # , 'bleu_fr_en': val_ds},
-                           eval_dataset={f"{val_ds_config_en_fr}": val_ds_fr_en
-                                         },
+                           eval_dataset={"bleu": ConcatDataset([val_ds_fr_en])},
                            callbacks=[EarlyStoppingCallback(early_stopping_patience=4)]
                            )
 
