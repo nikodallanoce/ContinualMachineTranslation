@@ -14,7 +14,7 @@ from transformers.utils import is_torch_fx_proxy
 
 from custom_datasets.MT6PreTrainingDataset import MT6PreTrainingDataset
 from eval.bleu_utility import compute_bleu_mt6
-from pre_training.CustomTrainer import CustomTrainer
+from trainers.CustomTrainer import CustomTrainer
 from utilities.utility import collate_pad, collate_torch_iterable, collate_pad_mt6
 
 

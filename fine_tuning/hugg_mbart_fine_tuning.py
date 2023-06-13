@@ -205,7 +205,7 @@ if __name__ == '__main__':
     trainer = MBartTrainer(model, training_args,
                            train_dataset=ConcatDataset([en_fr_ds, fr_en_ds]),
                            # eval_dataset={'bleu_en_fr': val_ds, 'bleu_fr_en': val_ds},  # , 'bleu_fr_en': val_ds},
-                           eval_dataset={"bleu": ConcatDataset([val_ds_fr_en])},
+                           eval_dataset={"bleu": ConcatDataset([val_ds_fr_en, val_ds_de_en])},
                            callbacks=[EarlyStoppingCallback(early_stopping_patience=4)]
                            )
 
