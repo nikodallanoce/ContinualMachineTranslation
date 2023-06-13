@@ -26,17 +26,8 @@ class MBartTrainer(CustomTrainer):
                  callbacks: Optional[List[TrainerCallback]] = None,
                  optimizers: Tuple[torch.optim.Optimizer, torch.optim.lr_scheduler.LambdaLR] = (None, None),
                  preprocess_logits_for_metrics: Callable[[torch.Tensor, torch.Tensor], torch.Tensor] = None):
-        super(MBartTrainer).__init__(model, args, data_collator, train_dataset, eval_dataset, tokenizer, model_init,
-                         compute_metrics, callbacks, optimizers, preprocess_logits_for_metrics)
-
-    def evaluate(
-        self,
-        eval_dataset: Optional[Dataset] = None,
-        ignore_keys: Optional[List[str]] = None,
-        metric_key_prefix: str = "eval",
-        **gen_kwargs,
-    ) -> Dict[str, float]:
-        return super().evaluate(eval_dataset, ignore_keys, metric_key_prefix)
+        super().__init__(model, args, data_collator, train_dataset, eval_dataset, tokenizer, model_init,
+                                     compute_metrics, callbacks, optimizers, preprocess_logits_for_metrics)
 
     def get_train_dataloader(self) -> DataLoader:
         data_loader: DataLoader
