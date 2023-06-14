@@ -31,15 +31,22 @@ class MBartTranslationDataset(Dataset):
 
     def __getitem__(self, index):
         sent = self.hugg_dataset[index][self.ds_field]
-        src, trg = sent[self.src_lang], sent[self.tgt_lang]
+        src, tgt = sent[self.src_lang], sent[self.tgt_lang]
 
         rng = np.random.default_rng(index)
         while len(src.split(" ")) < self.min_words or index in self.skip_rows:
-            index = rng.integers(0, len(self.hugg_dataset) - 1, dtype=int)
+            index = rng.integers(0, len(self.hugg_dataset), dtype=int)
             sent = self.hugg_dataset[index][self.ds_field]
-            src, trg = sent[self.src_lang], sent[self.tgt_lang]
+            src, tgt = sent[self.src_lang], sent[self.tgt_lang]
 
-        outputs = self.tokenizer(src, text_target=trg, return_special_tokens_mask=False,
+        while len(src.split(" ")) < (self.input_max_length - self.input_max_length * 0.35):
+            index = rng.integers(0, len(self.hugg_dataset), dtype=int)
+            if index not in self.skip_rows:
+                sent = self.hugg_dataset[index][self.ds_field]
+                src = src + self.tokenizer.eos_token + sent[self.src_lang]
+                tgt = tgt + self.tokenizer.eos_token + sent[self.tgt_lang]
+
+        outputs = self.tokenizer(src, text_target=tgt, return_special_tokens_mask=False,
                                  add_special_tokens=True, truncation=True,
                                  max_length=self.input_max_length,
                                  return_tensors='pt')

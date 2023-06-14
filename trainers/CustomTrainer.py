@@ -6,7 +6,7 @@ from torch.utils.data import Dataset, ConcatDataset
 from transformers import Seq2SeqTrainer, PreTrainedModel, TrainingArguments, DataCollator, PreTrainedTokenizerBase, \
     EvalPrediction, TrainerCallback
 
-from eval.bleu_utility import compute_bleu_mbart
+from eval.bleu_utility import compute_bleu_auto_model
 
 
 class CustomTrainer(Seq2SeqTrainer):
@@ -46,10 +46,11 @@ class CustomTrainer(Seq2SeqTrainer):
     def update_metrics_dict(self, eval_ds: Dataset, src_lang, tgt_lang) -> Dict[str, float]:
         metrics: Dict[str, Any] = dict()
         for i in range(2):
-            bleu_score: Dict[str, Any] = compute_bleu_mbart(eval_ds, self.model,
-                                                            src_lang=src_lang,
-                                                            tgt_lang=tgt_lang,
-                                                            bleu_type="sacrebleu")
+            bleu_score: Dict[str, Any] = compute_bleu_auto_model(eval_ds, self.model,
+                                                                 src_lang=src_lang,
+                                                                 tgt_lang=tgt_lang,
+                                                                 bleu_type="sacrebleu",
+                                                                 batch_size=32)
             metric_key = next(iter(bleu_score))
             src_lang, tgt_lang = tgt_lang, src_lang
             metrics[f"eval_bleu_{src_lang}_{tgt_lang}"] = bleu_score[metric_key]
