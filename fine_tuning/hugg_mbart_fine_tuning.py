@@ -1,4 +1,6 @@
 from typing import Dict
+import torch
+torch.backends.cudnn.benchmark = True
 from torch.utils.data import ConcatDataset
 from datasets import load_dataset
 from transformers import Seq2SeqTrainingArguments, MBartConfig, \
@@ -19,8 +21,9 @@ os.environ["WANDB_LOG_MODEL"] = "true"
 # turn off watch to log faster
 os.environ["WANDB_WATCH"] = "false"
 
-os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"  # see issue #152
-os.environ["CUDA_VISIBLE_DEVICES"] = "3"
+
+# os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"  # see issue #152
+# os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
 
 def compute_bleu_metric(prediction: EvalPrediction):
@@ -35,7 +38,7 @@ def compute_bleu_metric(prediction: EvalPrediction):
 
 
 def run_server():
-    training_args = Seq2SeqTrainingArguments(f"/home/n.dallanoce/PyCharm/pretraining/weights/{project_name}",
+    training_args = Seq2SeqTrainingArguments(f"/home/n.dallanoce/PyCharm/pretraining/weights/{project_name}_conf_std",
                                              overwrite_output_dir=True,
                                              label_names=['labels'],
                                              do_train=True,
@@ -44,26 +47,26 @@ def run_server():
                                              optim="adamw_torch",
                                              learning_rate=6e-4,
                                              # auto_find_batch_size=True,
-                                             per_device_train_batch_size=8,
+                                             per_device_train_batch_size=128,
                                              gradient_accumulation_steps=1,
                                              # num_train_epochs=3,  # to change
-                                             max_steps=int(8e5),
-                                             logging_steps=5,  # 500
+                                             max_steps=int(5e5),
+                                             logging_steps=500,  # 500
                                              save_steps=10000,  # to restore
                                              log_level="info",
                                              save_strategy="steps",  # steps
                                              load_best_model_at_end=True,
                                              evaluation_strategy="steps",  # steps
-                                             eval_steps=5,  # to restore
+                                             eval_steps=10000,  # to restore
                                              fp16=True,
                                              dataloader_drop_last=True,
                                              dataloader_pin_memory=True,
                                              dataloader_num_workers=4,
                                              # prediction_loss_only=True,
                                              save_total_limit=1,
-                                             metric_for_best_model="bleu_en_fr",
+                                             metric_for_best_model="bleu_avg",
                                              greater_is_better=True,
-                                             report_to=["none"],
+                                             report_to=["wandb"],
                                              ignore_data_skip=False
                                              )
 
@@ -79,7 +82,7 @@ if __name__ == '__main__':
     #                               split=f"train",
     #                               ignore_verifications=True)
 
-    tok_name = "nikodallanoce/mbart-cc4-vanilla-32k-5"
+    tok_name = "nikodallanoce/mbart-cc4-vanilla-32k-5"  # "facebook/mbart-large-cc25"
     tok_en_fr = AutoTokenizer.from_pretrained(tok_name, src_lang="en_XX", tgt_lang="fr_XX")
     tok_fr_en = AutoTokenizer.from_pretrained(tok_name, src_lang="fr_XX", tgt_lang="en_XX")
     training_args = run_server()
@@ -195,18 +198,22 @@ if __name__ == '__main__':
     #                                  cache_dir=f"/data/n.dallanoce/cc_en_{tgt_lang}",
     #                                  split=f"train[0:25000000]",
     #                                  verification_mode='no_checks')
-    model = MBartForConditionalGeneration.from_pretrained(
-        "/home/n.dallanoce/PyCharm/pretraining/weights/mbart_ft_en-fr/checkpoint-260000")
-    mbart_config = MBartConfig(encoder_layers=6, decoder_layers=6,
-                               encoder_ffn_dim=2048, decoder_ffn_dim=2048,
-                               encoder_attention_heads=8, decoder_attention_heads=8,
-                               d_model=512, max_length=128, vocab_size=tok_en_de.vocab_size, dropout=0.1)
+    # model = MBartForConditionalGeneration.from_pretrained(
+    #     "/home/n.dallanoce/PyCharm/pretraining/weights/C-mbart_pre_en-fr/checkpoint-65000")
+    # mbart_config = MBartConfig(encoder_layers=6, decoder_layers=6,
+    #                            encoder_ffn_dim=2048, decoder_ffn_dim=2048,
+    #                            encoder_attention_heads=8, decoder_attention_heads=8,
+    #                            d_model=512, max_length=128, vocab_size=tok_en_de.vocab_size, dropout=0.1)
     # model: MBartForConditionalGeneration = MBartForConditionalGeneration(mbart_config)
+    model = MBartForConditionalGeneration.from_pretrained(
+       "/home/n.dallanoce/PyCharm/pretraining/weights/mbart_pre_en-fr/checkpoint-100000")
     trainer = MBartTrainer(model, training_args,
                            train_dataset=ConcatDataset([en_fr_ds, fr_en_ds]),
                            # eval_dataset={'bleu_en_fr': val_ds, 'bleu_fr_en': val_ds},  # , 'bleu_fr_en': val_ds},
-                           eval_dataset={"bleu": ConcatDataset([val_ds_fr_en, val_ds_de_en])},
-                           callbacks=[EarlyStoppingCallback(early_stopping_patience=4)]
+                           eval_dataset={"bleu": ConcatDataset([val_ds_fr_en])},
+                           callbacks=[EarlyStoppingCallback(early_stopping_patience=4)],
+                           tokenizer_name=tok_name
                            )
 
+    # change bleu batch size
     trainer.train(resume_from_checkpoint=False)

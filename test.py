@@ -13,6 +13,8 @@ if __name__ == '__main__':
                        verification_mode='no_checks')
 
     concat_ds = ConcatDataset([ds1, ds2])
+    for ds in concat_ds.datasets:
+        pass
 
     dl = DataLoader(concat_ds, shuffle=True)
     for e in dl:

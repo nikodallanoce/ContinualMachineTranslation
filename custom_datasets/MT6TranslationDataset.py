@@ -10,7 +10,8 @@ from torch.utils.data import Dataset, DataLoader, ConcatDataset
 from torch import Tensor
 from transformers import PreTrainedTokenizer, MT5TokenizerFast
 import datasets
-
+from eval.bleu_utility import get_langs_token
+from MT6TokenizerFast import MT6TokenizerFast
 from custom_datasets.MT6PreTrainingDataset import MT6PreTrainingDataset, tokenize_torch
 from noise_functions.MT5NoiseFunction import MT5NoiseFunction, MT6NoiseFunction
 
@@ -25,6 +26,11 @@ class MT6TranslationDataset(Dataset):
         super(MT6TranslationDataset, self).__init__()
 
         self.hugg_dataset: datasets.Dataset = hugg_dataset
+
+        if isinstance(tokenizer, MT6TokenizerFast):
+            tok_src_lang, tok_tgt_lang = get_langs_token(src_lang, tgt_lang)
+            tokenizer = MT6TokenizerFast.from_pretrained(tokenizer.name_or_path, src_lang=tok_src_lang,
+                                                         tgt_lang=tok_tgt_lang)
         self.tokenizer: MT5TokenizerFast = tokenizer
         self.tgt_lang: str = tgt_lang
         self.src_lang: str = src_lang
@@ -47,6 +53,7 @@ class MT6TranslationDataset(Dataset):
             src, tgt = self.retrieve_src_tgt(rng)
 
         if self.noise_fn is not None:
+            # src, tgt = self.append_sentences(src, tgt, " ", rng) #concatenate sentence pairs on pre-training
             tsc_src, tsc_tgt = self.translation_span_corruption(src, tgt, index, rng)
             # if self.noise_fn.return_list:
             #     while len(tsc_src) < self.noise_fn.n_groups:
@@ -58,7 +65,9 @@ class MT6TranslationDataset(Dataset):
                                                          self.tokenizer)
             # att_mask, labels, input_ids = torch.tensor(att_mask), torch.tensor(labels), torch.tensor(input_ids)
         else:
-            src = f"translate {PREFIX_TASK[self.src_lang]} to {PREFIX_TASK[self.tgt_lang]}: " + src
+            src, tgt = self.append_sentences(src, tgt, "</s>", rng)
+            if not isinstance(self.tokenizer, MT6TokenizerFast):
+                src = f"translate {PREFIX_TASK[self.src_lang]} to {PREFIX_TASK[self.tgt_lang]}: " + src
             inputs, targets = src, tgt
 
             inp_tok = self.tokenizer(inputs, return_special_tokens_mask=False,
@@ -66,7 +75,7 @@ class MT6TranslationDataset(Dataset):
                                      max_length=self.input_max_length,
                                      return_tensors='pt')
 
-            out_tok = self.tokenizer(targets, return_special_tokens_mask=False,
+            out_tok = self.tokenizer(text_target=targets, return_special_tokens_mask=False,
                                      add_special_tokens=True, truncation=True,
                                      max_length=self.input_max_length, padding='longest',
                                      return_tensors='pt', return_attention_mask=False, return_token_type_ids=False)
@@ -79,22 +88,29 @@ class MT6TranslationDataset(Dataset):
         return {'input_ids': input_ids, self.labels_name: labels,
                 'attention_mask': att_mask}
 
+    def append_sentences(self, src: str, tgt: str, eos_sep: str, rng):
+        while len(src.split(" ")) < (self.input_max_length - self.input_max_length * 0.35):
+            app_src, app_tgt = self.retrieve_src_tgt(rng)
+            if len(app_src.split()) > 3 and len(app_tgt.split()) > 3:
+                src = src + eos_sep + app_src
+                tgt = tgt + eos_sep + app_tgt
+        return src, tgt
+
     def translation_span_corruption(self, src: str, trg: str, index: int, rng: Generator) -> Tuple[str, List[str]]:
         transl_pairs: List[str] = [src, trg]
         mask_idx = rng.integers(0, len(transl_pairs), dtype=int)
         transl_pairs[mask_idx], tgt_txt = self.noise_fn.compute(transl_pairs[mask_idx], index)
-        src_txt = "</s> ".join(transl_pairs)
+        src_txt = f"{self.tokenizer.eos_token_id} ".join(transl_pairs)
         return src_txt, tgt_txt
 
     def retrieve_src_tgt(self, rng) -> Tuple[str, str]:
         src: str = ""
         tgt: str = ""
         while len(src.split(" ")) < self.min_words:
-            index = rng.integers(0, len(self.hugg_dataset) - 1, dtype=int)
-            if index in self.skip_rows:
-                continue
-            sent = self.hugg_dataset[index][self.ds_field]
-            src, tgt = sent[self.src_lang], sent[self.tgt_lang]
+            index = rng.integers(0, len(self.hugg_dataset), dtype=int)
+            if index not in self.skip_rows:
+                sent = self.hugg_dataset[index][self.ds_field]
+                src, tgt = sent[self.src_lang], sent[self.tgt_lang]
         return src, tgt
 
 

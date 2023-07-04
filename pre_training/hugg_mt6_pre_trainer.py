@@ -17,12 +17,12 @@ from MT6 import MT6
 from noise_functions.MT5NoiseFunction import MT5NoiseFunction
 from noise_functions.MT6NoiseFunction import MT6NoiseFunction
 from custom_datasets.MT6PreTrainingDataset import MT6PreTrainingDataset, get_item_for_iterable
-from trainers.MT6Trainer import MT6Trainer
+from trainers.MT6Trainer import MT6Trainer, TrainingStrategy
 import os
 
 # os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"  # see issue #152
 # os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-project_name = "mt6_pre_en-fr(M1)"
+project_name = "mt6_pre_en-fr_de(M2)"
 os.environ["WANDB_PROJECT"] = project_name
 
 # save your trained model checkpoint to wandb
@@ -33,7 +33,7 @@ os.environ["WANDB_WATCH"] = "false"
 
 
 def run_server():
-    training_args = Seq2SeqTrainingArguments(f"/home/n.dallanoce/PyCharm/pretraining/weights/{project_name}_twe2",
+    training_args = Seq2SeqTrainingArguments(f"/home/n.dallanoce/PyCharm/pretraining/weights/{project_name}_twe",
                                              overwrite_output_dir=True,
                                              # label_names=['labels_pnat', 'labels_transl'],
                                              do_train=True,
@@ -66,7 +66,7 @@ def run_server():
 
 if __name__ == '__main__':
     max_inp_len = 128
-    pnat_noise_density = 0.15
+    pnat_noise_density = 0.5
     tsc_noise_density = 0.5
     n_groups = 2
 
@@ -211,17 +211,17 @@ if __name__ == '__main__':
     # model = MT6(
     #     MT5Config(num_layers=6, d_model=512, num_heads=8, d_ff=2048, vocab_size=len(tok_en), max_length=max_inp_len,
     #               tie_word_embeddings=False))
-    model = MT6(MT5Config(vocab_size=len(tok_en), max_length=max_inp_len, tie_word_embeddings=True))
+    #model = MT6(MT5Config(vocab_size=len(tok_en), max_length=max_inp_len, tie_word_embeddings=True))
     # model = MT6(
     #     T5Config(vocab_size=len(tok_en), tie_word_embeddings=False, dense_act_fn="gelu_new",
     #              feed_forward_proj="gated-gelu", decoder_start_token_id=0))
     # new_config = T5ForConditionalGeneration.from_pretrained("google/t5-v1_1-small").config
     # new_config.vocab_size = len(tok_en)
     # model = MT6(new_config)
-    # model = MT6.from_pretrained("/home/n.dallanoce/PyCharm/pretraining/weights/mt6_pre_en-fr_de(M2)/checkpoint-100000")
+    model = MT6.from_pretrained("/home/n.dallanoce/PyCharm/pretraining/weights/mt6_pre_en-fr(M1)_twe/checkpoint-100000")
 
-    train_ds = ConcatDataset([en_pre_train_ds, fr_pre_train_ds, en_fr_tsc_ds])
-    trainer = MT6Trainer("pretraining", model, training_args,
+    train_ds = ConcatDataset([de_pre_train_ds, en_de_tsc_ds])
+    trainer = MT6Trainer(TrainingStrategy.PRE_TRAINING, model, training_args,
                          train_dataset=train_ds,
                          # optimizers=(optimizer, lr_scheduler)
                          )

@@ -8,7 +8,6 @@ import torch
 from torch import Tensor
 from torch.utils.data import Dataset
 from transformers import MT5TokenizerFast
-
 from noise_functions.MT5NoiseFunction import MT5NoiseFunction
 from noise_functions.MT6NoiseFunction import MT6NoiseFunction
 
@@ -103,7 +102,7 @@ def translation_span_corruption(input_max_length: int, noise_fn: Union[MT5NoiseF
     transl_pairs: List[str] = list(text_pair.values())
     mask_idx = rng.integers(0, len(transl_pairs), dtype=int)
     transl_pairs[mask_idx], tgt_txt = noise_fn.compute(transl_pairs[mask_idx], seed)
-    src_txt = "</s> ".join(transl_pairs)
+    src_txt = f"{tokenizer.eos_token} ".join(transl_pairs)
     att_mask, labels, input_ids = tokenize(src_txt, tgt_txt, noise_fn, input_max_length, tokenizer)
     return att_mask, labels, input_ids
 

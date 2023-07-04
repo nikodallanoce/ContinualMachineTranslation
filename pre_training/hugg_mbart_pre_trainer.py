@@ -3,12 +3,13 @@ from functools import partial
 import datasets
 import torch.utils.data
 from datasets import load_dataset, interleave_datasets
+from torch.utils.data import ConcatDataset
 from transformers import Seq2SeqTrainingArguments, MBartConfig, \
     MBartForConditionalGeneration, MBartTokenizerFast
 import os
 
 # set the wandb project where this run will be logged
-project_name = "mbart_pre_en-de"
+project_name = "mbart_ft_en-fr-Mf1"
 os.environ["WANDB_PROJECT"] = project_name
 
 # save your trained model checkpoint to wandb
@@ -28,7 +29,7 @@ from trainers.MBartTrainer import MBartTrainer
 
 if __name__ == '__main__':
     size = str(int(2 ** 24))
-    tok_name = "nikodallanoce/mbart-cc4-vanilla-32k-5"  # "facebook/mbart-large-cc25"
+    tok_name = "nikodallanoce/mbart-cc4-vanilla-32k-5"
     # pre_train_ds = load_dataset("text", data_files={"train": ["D:\\datasets\\test_hugg_en\\test_data_hugg.txt"]},
     #                             cache_dir="D:\\datasets\\test_hugg_en", split=f'train[0:128]',
     #                             ignore_verifications=True)
@@ -40,26 +41,30 @@ if __name__ == '__main__':
     tok_es = MBartTokenizerFast.from_pretrained(tok_name, src_lang="es_XX")
     tok_de = MBartTokenizerFast.from_pretrained(tok_name, src_lang="de_DE")
 
-    training_args = Seq2SeqTrainingArguments(f"/home/n.dallanoce/PyCharm/pretraining/weights/{project_name}/",
+    training_args = Seq2SeqTrainingArguments(f"/home/n.dallanoce/PyCharm/pretraining/weights/{project_name}_pre_metr",
                                              overwrite_output_dir=True,
                                              label_names=['labels'],
                                              do_train=True,
-                                             learning_rate=3e-4,  # 8e-5
+                                             learning_rate=1e-4,
                                              optim="adamw_torch",
                                              # auto_find_batch_size=True,
                                              per_device_train_batch_size=128,
                                              gradient_accumulation_steps=1,
                                              # num_train_epochs=1,
-                                             max_steps=int(1.8e5),
+                                             max_steps=int(1e5),
                                              logging_steps=500,
-                                             save_steps=5000,
+                                             save_steps=10000,
+                                             evaluation_strategy="steps",
+                                             eval_steps=5000,
                                              log_level="info",
                                              save_strategy="steps",
                                              fp16=True,
                                              dataloader_drop_last=True,
                                              dataloader_pin_memory=True,
                                              dataloader_num_workers=4,
-                                             # prediction_loss_only=True,
+                                             metric_for_best_model="pretraining_avg",
+                                             greater_is_better=False,
+                                             warmup_steps=10000,
                                              save_total_limit=1,
                                              report_to=["wandb"]
                                              )
@@ -93,19 +98,31 @@ if __name__ == '__main__':
                         batch_size=2048)
     fr_mc4 = fr_mc4.map(partial(get_item_for_iterable, tokenizer=tok_fr), input_columns=['text'], batched=True,
                         batch_size=2048)
-    #pre_ds = interleave_datasets([en_mc4, fr_mc4])
+    # pre_ds = interleave_datasets([en_mc4, fr_mc4])
     # pre_train_ds = pre_ds
 
     mbart_config = MBartConfig(encoder_layers=6, decoder_layers=6,
                                encoder_ffn_dim=2048, decoder_ffn_dim=2048,
                                encoder_attention_heads=8, decoder_attention_heads=8,
                                d_model=512, max_length=128, vocab_size=tok_en.vocab_size, dropout=0.1)
+
     model: MBartForConditionalGeneration = MBartForConditionalGeneration(mbart_config)
     # model: MBartForConditionalGeneration = MBartForConditionalGeneration.from_pretrained(
     #     "/home/n.dallanoce/PyCharm/pretraining/weights/S2_mbart_pre_en-fr_de(M2)/checkpoint-180000")
-    pre_train_ds = torch.utils.data.ConcatDataset([en_pre_train_ds, de_pre_train_ds])
+    pre_train_ds = torch.utils.data.ConcatDataset([en_pre_train_ds, fr_pre_train_ds])
+    cc100_en_val = load_dataset("cc100", lang="en",
+                                cache_dir="/data/n.dallanoce/cc100/huggingface",
+                                split=f"train[40000000:40020000]",
+                                verification_mode='no_checks')
+    val_en_pre_train = MBartPreTrainingDataset(cc100_en_val, tok_en, input_max_length=128)
+
+    cc100_fr_val = load_dataset("cc100", lang="fr",
+                                cache_dir="/data/n.dallanoce/cc100/huggingface",
+                                split=f"train[40000000:40020000]",
+                                verification_mode='no_checks')
+    val_fr_pre_train = MBartPreTrainingDataset(cc100_fr_val, tok_fr, input_max_length=128)
     trainer = MBartTrainer(model, training_args,
                            train_dataset=pre_train_ds,
-                           # optimizers=(optimizer, lr_scheduler)
+                           eval_dataset={"pretraining": ConcatDataset([val_en_pre_train, val_fr_pre_train])}
                            )
     trainer.train(resume_from_checkpoint=False)

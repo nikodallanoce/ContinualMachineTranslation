@@ -1,3 +1,4 @@
+from enum import Enum
 from typing import List, Dict, Tuple
 
 import torch
@@ -109,3 +110,8 @@ def prepare_ds_indexes(hugg_datasets: Dict[str, Dataset]) -> Dict[str, Tuple[int
         ds_indexes[elem] = (last_idx, last_idx + ds_len)
         last_idx += ds_len
     return ds_indexes
+
+class TrainingStrategy(Enum):
+    PRE_TRAINING = 0,
+    FINE_TUNING = 1,
+    FINE_TUNING_LANG = 2

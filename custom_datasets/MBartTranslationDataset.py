@@ -39,12 +39,18 @@ class MBartTranslationDataset(Dataset):
             sent = self.hugg_dataset[index][self.ds_field]
             src, tgt = sent[self.src_lang], sent[self.tgt_lang]
 
-        while len(src.split(" ")) < (self.input_max_length - self.input_max_length * 0.35):
+        #src, tgt = self.tokenizer.bos_token + src, self.tokenizer.bos_token + tgt
+        ref_concat_len = self.input_max_length - self.input_max_length * 0.35
+        while len(src.split(" ")) < ref_concat_len:
             index = rng.integers(0, len(self.hugg_dataset), dtype=int)
             if index not in self.skip_rows:
                 sent = self.hugg_dataset[index][self.ds_field]
-                src = src + self.tokenizer.eos_token + sent[self.src_lang]
-                tgt = tgt + self.tokenizer.eos_token + sent[self.tgt_lang]
+                new_sent_src, new_sent_tgt = sent[self.src_lang], sent[self.tgt_lang]
+                if len(new_sent_src.split()) > 3 and len(new_sent_tgt.split()) > 3:
+                    src = src + " </s> " + new_sent_src
+                    tgt = tgt + " </s> " + new_sent_tgt
+                    # src = src + self.tokenizer.eos_token + self.tokenizer.bos_token + new_sent_src
+                    # tgt = tgt + self.tokenizer.eos_token + self.tokenizer.bos_token + new_sent_tgt
 
         outputs = self.tokenizer(src, text_target=tgt, return_special_tokens_mask=False,
                                  add_special_tokens=True, truncation=True,

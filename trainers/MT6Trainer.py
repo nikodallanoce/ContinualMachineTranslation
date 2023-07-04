@@ -15,12 +15,13 @@ from transformers.utils import is_torch_fx_proxy
 from custom_datasets.MT6PreTrainingDataset import MT6PreTrainingDataset
 from eval.bleu_utility import compute_bleu_mt6
 from trainers.CustomTrainer import CustomTrainer
-from utilities.utility import collate_pad, collate_torch_iterable, collate_pad_mt6
+from utilities.utility import collate_pad, collate_torch_iterable, collate_pad_mt6, TrainingStrategy
 
 
 class MT6Trainer(CustomTrainer):
 
-    def __init__(self, task: str, model: Union[PreTrainedModel, nn.Module] = None, args: TrainingArguments = None,
+    def __init__(self, task: TrainingStrategy, model: Union[PreTrainedModel, nn.Module] = None,
+                 args: TrainingArguments = None,
                  data_collator: Optional[DataCollator] = None, train_dataset: Optional[Dataset] = None,
                  eval_dataset: Optional[Union[Dataset, Dict[str, Dataset]]] = None,
                  tokenizer: Optional[PreTrainedTokenizerBase] = None,
@@ -28,12 +29,19 @@ class MT6Trainer(CustomTrainer):
                  compute_metrics: Optional[Callable[[EvalPrediction], Dict]] = None,
                  callbacks: Optional[List[TrainerCallback]] = None,
                  optimizers: Tuple[torch.optim.Optimizer, torch.optim.lr_scheduler.LambdaLR] = (None, None),
-                 preprocess_logits_for_metrics: Callable[[torch.Tensor, torch.Tensor], torch.Tensor] = None
-                 ):
+                 preprocess_logits_for_metrics: Callable[[torch.Tensor, torch.Tensor], torch.Tensor] = None,
+                 tokenizer_name: str = None):
         super().__init__(model, args, data_collator, train_dataset, eval_dataset, tokenizer, model_init,
-                         compute_metrics, callbacks, optimizers, preprocess_logits_for_metrics)
-        self.labels = ["labels_pnat", "labels_tsc"] if task == "pretraining" else ["labels"]
+                         compute_metrics, callbacks, optimizers, preprocess_logits_for_metrics, tokenizer_name)
+        self.labels = ["labels_pnat", "labels_tsc"] if task == TrainingStrategy.PRE_TRAINING else ["labels"]
         self.task = task
+
+    def compute_bleu(self, eval_ds: Dataset, model: PreTrainedModel, src_lang: str, tgt_lang: str, bleu_type: str,
+                     batch_size: int, tokenizer_name: str) -> Dict[str, Any]:
+        use_lang_tokens = self.task == TrainingStrategy.FINE_TUNING_LANG
+        return compute_bleu_mt6(trans_pair_ds=eval_ds, model=model, src_lang=src_lang, tgt_lang=tgt_lang,
+                                bleu_type=bleu_type, batch_size=batch_size, tokenizer_name=tokenizer_name,
+                                use_lang_tokens=use_lang_tokens)
 
     def get_train_dataloader(self) -> DataLoader:
 
@@ -63,6 +71,31 @@ class MT6Trainer(CustomTrainer):
             inputs['decoder_input_ids'] = self.shift_right(inputs['labels'])
         return super().compute_loss(model, inputs, return_outputs)
 
+    @staticmethod
+    def shift_tokens_right(input_ids: torch.Tensor, pad_token_id: int):
+        """
+        Shift input ids one token to the right, and wrap the last non pad token (the <LID> token) Note that MBart does not
+        have a single `decoder_start_token_id` in contrast to other Bart-like models.
+        """
+        prev_output_tokens = input_ids.clone()
+
+        if pad_token_id is None:
+            raise ValueError("self.model.config.pad_token_id has to be defined.")
+        # replace possible -100 values in labels by `pad_token_id`
+        prev_output_tokens.masked_fill_(prev_output_tokens == -100, pad_token_id)
+
+        index_of_eos = (prev_output_tokens.ne(pad_token_id).sum(dim=1) - 1).unsqueeze(-1)
+        decoder_start_tokens = prev_output_tokens.gather(1, index_of_eos).squeeze()
+        prev_output_tokens[:, 1:] = prev_output_tokens[:, :-1].clone()
+        prev_output_tokens[:, 0] = decoder_start_tokens
+        num_of_cols = prev_output_tokens.shape[-1]
+        for row, col_idx in enumerate(index_of_eos):
+            del_idx = int(col_idx) + 1
+            if del_idx < num_of_cols:
+                prev_output_tokens[row, del_idx] = pad_token_id
+
+        return prev_output_tokens
+
     def shift_right(self, input_ids):
         decoder_start_token_id = self.model.config.decoder_start_token_id
         pad_token_id = self.model.config.pad_token_id
@@ -89,11 +122,14 @@ class MT6Trainer(CustomTrainer):
         return shifted_input_ids
 
     def compute_loss(self, model, inputs, return_outputs=False):
-        if self.task == "pretraining":
+        if self.task == TrainingStrategy.PRE_TRAINING:
             loss = self.compute_mt6_loss(model, inputs, return_outputs)
             return loss
         else:
             inp = inputs[0]
+            if self.task == TrainingStrategy.FINE_TUNING_LANG:
+                inp["decoder_input_ids"] = self.shift_tokens_right(input_ids=inp["labels"],
+                                                                   pad_token_id=self.model.config.pad_token_id)
             return super().compute_loss(model, inp, return_outputs)
 
     def compute_mt6_loss(self, model, inputs, return_outputs):

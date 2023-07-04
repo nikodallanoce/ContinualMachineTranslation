@@ -13,6 +13,7 @@ from torch import nn, Tensor
 from torch.utils.data import Dataset, DataLoader, RandomSampler, ConcatDataset
 from transformers import PreTrainedModel, TrainingArguments, DataCollator, PreTrainedTokenizerBase, \
     EvalPrediction, TrainerCallback, Seq2SeqTrainer
+from eval.bleu_utility import compute_bleu_mbart
 
 
 class MBartTrainer(CustomTrainer):
@@ -21,13 +22,20 @@ class MBartTrainer(CustomTrainer):
                  data_collator: Optional[DataCollator] = None, train_dataset: Optional[Dataset] = None,
                  eval_dataset: Optional[Union[Dataset, Dict[str, Dataset]]] = None,
                  tokenizer: Optional[PreTrainedTokenizerBase] = None,
-                 model_init: Callable[[], PreTrainedModel] = None,
+                 model_init: Optional[Callable[[], PreTrainedModel]] = None,
                  compute_metrics: Optional[Callable[[EvalPrediction], Dict]] = None,
                  callbacks: Optional[List[TrainerCallback]] = None,
                  optimizers: Tuple[torch.optim.Optimizer, torch.optim.lr_scheduler.LambdaLR] = (None, None),
-                 preprocess_logits_for_metrics: Callable[[torch.Tensor, torch.Tensor], torch.Tensor] = None):
+                 preprocess_logits_for_metrics: Optional[Callable[[torch.Tensor, torch.Tensor], torch.Tensor]] = None,
+                 tokenizer_name: str = None):
         super().__init__(model, args, data_collator, train_dataset, eval_dataset, tokenizer, model_init,
-                                     compute_metrics, callbacks, optimizers, preprocess_logits_for_metrics)
+                         compute_metrics, callbacks, optimizers, preprocess_logits_for_metrics, tokenizer_name)
+
+    def compute_bleu(self, eval_ds: Dataset, model: PreTrainedModel, src_lang: str, tgt_lang: str, bleu_type: str,
+                     batch_size: int, tokenizer_name: str) -> Dict[str, Any]:
+
+        return compute_bleu_mbart(trans_pair_ds=eval_ds, model=model, src_lang=src_lang, tgt_lang=tgt_lang,
+                                  bleu_type=bleu_type, batch_size=batch_size, tokenizer_name=tokenizer_name)
 
     def get_train_dataloader(self) -> DataLoader:
         data_loader: DataLoader
@@ -47,10 +55,10 @@ class MBartTrainer(CustomTrainer):
                                      shuffle=True)
         return data_loader
 
-    def compute_loss(self, model, inputs, return_outputs=False):
-        if "labels" in inputs:
-            inputs['decoder_input_ids'] = self.shift_tokens_right(inputs['labels'], self.model.config.pad_token_id)
-        return super().compute_loss(model, inputs, return_outputs)
+    # def compute_loss(self, model, inputs, return_outputs=False):
+    #     if "labels" in inputs:
+    #         inputs['decoder_input_ids'] = self.shift_tokens_right(inputs['labels'], self.model.config.pad_token_id)
+    #     return super().compute_loss(model, inputs, return_outputs)
 
     @staticmethod
     def shift_tokens_right(input_ids: torch.Tensor, pad_token_id: int):
