@@ -30,19 +30,16 @@ class CustomTrainer(Seq2SeqTrainer, ABC):
     def evaluate(self, eval_dataset: Optional[Dataset] = None, ignore_keys: Optional[List[str]] = None,
                  metric_key_prefix: str = "eval", **gen_kwargs) -> Dict[str, float]:
         from statistics import mean
+        self.model.eval()
         eval_metrics: Dict[str, float] = dict()
         is_pretraining: bool = metric_key_prefix.split("_")[1] == "pretraining"
-        if isinstance(eval_dataset, ConcatDataset):
-            for eval_ds in eval_dataset.datasets:
-                if is_pretraining:
-                    eval_metrics.update(self.compute_new_pretraining_metrics(eval_ds))
-                else:
-                    eval_metrics.update(self.compute_new_bleu(eval_ds))
-        else:
+        if not isinstance(eval_dataset, ConcatDataset):
+            eval_dataset = ConcatDataset([eval_dataset])
+        for eval_ds in eval_dataset.datasets:
             if is_pretraining:
-                eval_metrics.update(self.compute_new_pretraining_metrics(eval_dataset))
+                eval_metrics.update(self.compute_new_pretraining_metrics(eval_ds))
             else:
-                eval_metrics.update(self.compute_new_bleu(eval_dataset))
+                eval_metrics.update(self.compute_new_bleu(eval_ds))
 
         dict_key_avg = metric_key_prefix.split("_")[1]
         if is_pretraining:
@@ -51,6 +48,7 @@ class CustomTrainer(Seq2SeqTrainer, ABC):
             eval_metrics[f'eval_{dict_key_avg}_avg'] = mean(eval_metrics[k] for k in eval_metrics)
         return_metrics = eval_metrics.copy()
         self.log(eval_metrics)
+        self.model.train()
         return return_metrics
 
     def compute_new_pretraining_metrics(self, eval_ds: Union[MBartPreTrainingDataset, MT6PreTrainingDataset]):

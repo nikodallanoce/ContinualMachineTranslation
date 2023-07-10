@@ -16,7 +16,7 @@ project_name = "mbart_ft_en-fr-Mf1"
 os.environ["WANDB_PROJECT"] = project_name
 
 # save your trained model checkpoint to wandb
-os.environ["WANDB_LOG_MODEL"] = "true"
+os.environ["WANDB_LOG_MODEL"] = "end"
 
 # turn off watch to log faster
 os.environ["WANDB_WATCH"] = "false"
@@ -38,7 +38,7 @@ def compute_bleu_metric(prediction: EvalPrediction):
 
 
 def run_server():
-    training_args = Seq2SeqTrainingArguments(f"/home/n.dallanoce/PyCharm/pretraining/weights/{project_name}_conf_std",
+    training_args = Seq2SeqTrainingArguments(f"/home/n.dallanoce/PyCharm/pretraining/weights/{project_name}_weights_anlsys",
                                              overwrite_output_dir=True,
                                              label_names=['labels'],
                                              do_train=True,
@@ -46,24 +46,25 @@ def run_server():
                                              # warmup_steps=2500,
                                              optim="adamw_torch",
                                              learning_rate=6e-4,
+                                             lr_scheduler_type="cosine",
                                              # auto_find_batch_size=True,
                                              per_device_train_batch_size=128,
                                              gradient_accumulation_steps=1,
                                              # num_train_epochs=3,  # to change
-                                             max_steps=int(5e5),
+                                             max_steps=int(1e5),
                                              logging_steps=500,  # 500
-                                             save_steps=10000,  # to restore
+                                             save_steps=5000,  # to restore
                                              log_level="info",
                                              save_strategy="steps",  # steps
                                              load_best_model_at_end=True,
                                              evaluation_strategy="steps",  # steps
-                                             eval_steps=10000,  # to restore
+                                             eval_steps=5000,  # to restore
                                              fp16=True,
                                              dataloader_drop_last=True,
                                              dataloader_pin_memory=True,
                                              dataloader_num_workers=4,
                                              # prediction_loss_only=True,
-                                             save_total_limit=1,
+                                             save_total_limit=20,
                                              metric_for_best_model="bleu_avg",
                                              greater_is_better=True,
                                              report_to=["wandb"],
@@ -89,7 +90,7 @@ if __name__ == '__main__':
 
     translation_ds_en_fr = load_dataset("yhavinga/ccmatrix", "en-fr",
                                         cache_dir="/data/n.dallanoce/cc_en_fr",
-                                        split=f"train[0:25000000]",
+                                        split=f"train[0:35000000]",
                                         verification_mode='no_checks')
 
     en_fr_ds = MBartTranslationDataset(translation_ds_en_fr, tok_en_fr, src_lang="en", tgt_lang="fr",
@@ -206,12 +207,12 @@ if __name__ == '__main__':
     #                            d_model=512, max_length=128, vocab_size=tok_en_de.vocab_size, dropout=0.1)
     # model: MBartForConditionalGeneration = MBartForConditionalGeneration(mbart_config)
     model = MBartForConditionalGeneration.from_pretrained(
-       "/home/n.dallanoce/PyCharm/pretraining/weights/mbart_pre_en-fr/checkpoint-100000")
+       "/home/n.dallanoce/PyCharm/pretraining/weights/S2_mbart_pre_en-fr(M1)/checkpoint-180000")
     trainer = MBartTrainer(model, training_args,
                            train_dataset=ConcatDataset([en_fr_ds, fr_en_ds]),
                            # eval_dataset={'bleu_en_fr': val_ds, 'bleu_fr_en': val_ds},  # , 'bleu_fr_en': val_ds},
                            eval_dataset={"bleu": ConcatDataset([val_ds_fr_en])},
-                           callbacks=[EarlyStoppingCallback(early_stopping_patience=4)],
+                           #callbacks=[EarlyStoppingCallback(early_stopping_patience=4)],
                            tokenizer_name=tok_name
                            )
 

@@ -20,8 +20,8 @@ from custom_datasets.MT6PreTrainingDataset import MT6PreTrainingDataset, get_ite
 from trainers.MT6Trainer import MT6Trainer, TrainingStrategy
 import os
 
-os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"  # see issue #152
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+# os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"  # see issue #152
+# os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 project_name = "mt6_ft_en-fr(MF1)"
 os.environ["WANDB_PROJECT"] = project_name
 
@@ -40,20 +40,21 @@ if __name__ == '__main__':
         overwrite_output_dir=True,
         # label_names=['labels_pnat', 'labels_transl'],
         do_train=True,
-        per_device_train_batch_size=64,
+        per_device_train_batch_size=128,
         gradient_accumulation_steps=1,
         # num_train_epochs=1,
         optim="adamw_torch",
-        learning_rate=2e-4,
-        lr_scheduler_type="linear",
-        max_steps=int(1e5),
+        learning_rate=6e-4,
+        lr_scheduler_type="cosine",
+        max_steps=int(2e5),
         logging_steps=500,
         save_steps=10000,
         save_strategy="steps",
         log_level="info",
         load_best_model_at_end=True,
         evaluation_strategy="steps",
-        eval_steps=10,
+        eval_steps=10000,
+        logging_first_step=False,
         fp16=True,
         dataloader_drop_last=True,
         dataloader_pin_memory=True,
@@ -101,7 +102,7 @@ if __name__ == '__main__':
                                                 324665884})
     translation_ds_en_de = load_dataset("yhavinga/ccmatrix", "en-de",
                                         cache_dir="/data/n.dallanoce/cc_en_de",
-                                        split=f"train[0:40000000]",
+                                        split=f"train[0:25000000]",
                                         verification_mode='no_checks')
 
     en_de_ds = MT6TranslationDataset(translation_ds_en_de, tok, src_lang="en", tgt_lang="de", noise_fn=None,
@@ -179,11 +180,12 @@ if __name__ == '__main__':
     #               tie_word_embeddings=True, dropout_rate=0.1))
     # model = T5ForConditionalGeneration.from_pretrained(
     #     "google/t5-v1_1-small", max_length=max_inp_len, tie_word_embeddings=False)
-    model = MT5ForConditionalGeneration(
-        MT5Config(vocab_size=len(tok), max_length=max_inp_len, tie_word_embeddings=True))
-    # model = MT5ForConditionalGeneration.from_pretrained(
-    #     "/home/n.dallanoce/PyCharm/pretraining/weights/mt6_pre_en-fr(M1)_twe/checkpoint-100000")
+    # model = MT5ForConditionalGeneration(
+    #     MT5Config(vocab_size=len(tok), max_length=max_inp_len, tie_word_embeddings=True))
+    model = MT5ForConditionalGeneration.from_pretrained(
+        "/home/n.dallanoce/PyCharm/pretraining/weights/mt6_pre_en-fr(M1)_twe/checkpoint-100000")
 
+    model.resize_token_embeddings(len(tok))
     trainer = MT6Trainer(TrainingStrategy.FINE_TUNING_LANG, model, training_args,
                          train_dataset=ConcatDataset([en_fr_ds, fr_en_ds]),
                          eval_dataset={"bleu": ConcatDataset([val_ds_fr_en])},

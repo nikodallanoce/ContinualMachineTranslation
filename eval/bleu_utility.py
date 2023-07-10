@@ -105,18 +105,21 @@ def compute_bleu_mt6(trans_pair_ds: Dataset,
         fn_kwargs['task'] = f"translate {PREFIX_TASK[src_lang]} to {PREFIX_TASK[tgt_lang]}: "
 
     test_loader: DataLoader = create_dataloader(trans_pair_ds, input_column, fn_kwargs, batch_size)
+    # decoder_start_token_id = tokenizer.pad_token_id
     results = compute_hugg_bleu(decoder_start_token_id, device, max_length, model, num_beams, test_loader, tokenizer,
                                 bleu_type, bleu_tokenizer)
     return results
 
 
-def compute_hugg_bleu(decoder_start_token_id: int, device: str, max_length: int, model: PreTrainedModel, num_beams: int,
+def compute_hugg_bleu(decoder_start_token_id: int, device: str, max_length: int,
+                      model: Union[MT5ForConditionalGeneration, MBartForConditionalGeneration], num_beams: int,
                       test_loader: DataLoader, tokenizer: PreTrainedTokenizer,
                       bleu_type: str, bleu_tokenizer: str) -> Dict[str, Any]:
     bleu_metric = evaluate.load(bleu_type)
     for i, batch in enumerate(tqdm(test_loader)):
-        translation = model.generate(batch['input_ids'].to(device), num_beams=num_beams, max_length=max_length,
-                                     forced_bos_token_id=decoder_start_token_id)
+        with torch.no_grad():
+            translation = model.generate(batch['input_ids'].to(device), num_beams=num_beams, max_length=max_length,
+                                         forced_bos_token_id=decoder_start_token_id)
         bleu_metric.add_batch(predictions=tokenizer.batch_decode(translation, skip_special_tokens=True),
                               references=[[elem] for elem in batch['original_text']])
 
@@ -167,9 +170,8 @@ if __name__ == '__main__':
     #
     dev = "cuda:0" if torch.cuda.is_available() else "cpu"
     #     # tok_en = MBartTokenizer.from_pretrained("facebook/mbart-large-cc25", lang1="en_XX", lang2="fr_XX")
-    model = AutoModelForSeq2SeqLM.from_pretrained(
-        "/home/n.dallanoce/PyCharm/pretraining/weights/mt6_ft_en-fr(MF1)_twe_cnct_lang_llr/checkpoint-80000").to(dev)
-
+    model: Union[MBartForConditionalGeneration, MT5ForConditionalGeneration] = AutoModelForSeq2SeqLM.from_pretrained(
+        "/home/n.dallanoce/PyCharm/pretraining/weights/mt6_ft_en-fr(MF1)_twe_cnct_lang_llr/checkpoint-130000").to(dev)
     # translation_ds = load_dataset("yhavinga/ccmatrix", "en-es",
     #                               cache_dir="/data/n.dallanoce/cc_en_es",
     #                               split=f"train[28000000:28003000]",
@@ -185,13 +187,14 @@ if __name__ == '__main__':
     # print(len(translation_ds))
     translation_ds = load_dataset("wmt14", "fr-en",
                                   cache_dir="/data/n.dallanoce/wmt14",
-                                  split=f"validation",
+                                  split=f"test",
                                   verification_mode='no_checks')
-    src_lang, tgt_lang = "fr", "en"
+    src_lang, tgt_lang = "en", "fr"
+    
     # bleu = compute_bleu_auto_model(translation_ds, model, src_lang=src_lang, tgt_lang=tgt_lang, device=dev, num_beams=5,
     #                                batch_size=32, bleu_type="sacrebleu", bleu_tokenizer='intl', tokenizer_name=None)
     bleu = compute_bleu_mt6(translation_ds, model, src_lang=src_lang, tgt_lang=tgt_lang, device=dev, num_beams=5,
-                            batch_size=32, bleu_type="sacrebleu", bleu_tokenizer=None,
+                            batch_size=32, bleu_type="sacrebleu", bleu_tokenizer="intl",
                             tokenizer_name="nikodallanoce/mt6_tok_fast",
                             use_lang_tokens=True)
     s_k = next(iter(bleu))

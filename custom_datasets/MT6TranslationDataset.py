@@ -65,7 +65,7 @@ class MT6TranslationDataset(Dataset):
                                                          self.tokenizer)
             # att_mask, labels, input_ids = torch.tensor(att_mask), torch.tensor(labels), torch.tensor(input_ids)
         else:
-            src, tgt = self.append_sentences(src, tgt, "</s>", rng)
+            src, tgt = self.append_sentences(src, tgt, " </s> ", rng)
             if not isinstance(self.tokenizer, MT6TokenizerFast):
                 src = f"translate {PREFIX_TASK[self.src_lang]} to {PREFIX_TASK[self.tgt_lang]}: " + src
             inputs, targets = src, tgt
