@@ -9,6 +9,7 @@ from transformers import Seq2SeqTrainer, PreTrainedModel, TrainingArguments, Dat
 
 from custom_datasets.MBartPreTrainingDataset import MBartPreTrainingDataset
 from custom_datasets.MT6PreTrainingDataset import MT6PreTrainingDataset
+from custom_datasets.MT6TranslationDataset import MT6TranslationDataset
 from eval.pretraining_utility import compute_pretraining_metrics
 
 
@@ -51,7 +52,7 @@ class CustomTrainer(Seq2SeqTrainer, ABC):
         self.model.train()
         return return_metrics
 
-    def compute_new_pretraining_metrics(self, eval_ds: Union[MBartPreTrainingDataset, MT6PreTrainingDataset]):
+    def compute_new_pretraining_metrics(self, eval_ds: Union[MBartPreTrainingDataset, MT6PreTrainingDataset, MT6TranslationDataset]):
         ris: Dict[str, float] = compute_pretraining_metrics(self.model, eval_ds, batch_size=16, device="cuda:0")
         return_metrics: Dict[str, float] = {}
         for k_r, v_r in ris.items():

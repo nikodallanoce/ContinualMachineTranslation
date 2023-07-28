@@ -7,13 +7,12 @@ from torch.utils.data import ConcatDataset
 from transformers import Seq2SeqTrainingArguments, MBartConfig, \
     MBartForConditionalGeneration, MBartTokenizerFast
 import os
-
 # set the wandb project where this run will be logged
-project_name = "mbart_pre_en-fr_de_es-M3"
+project_name = "mbart_pre_en-fr_de-M2"
 os.environ["WANDB_PROJECT"] = project_name
 
 # save your trained model checkpoint to wandb
-os.environ["WANDB_LOG_MODEL"] = "end"
+os.environ["WANDB_LOG_MODEL"] = "false"
 
 # turn off watch to log faster
 os.environ["WANDB_WATCH"] = "false"
@@ -25,6 +24,7 @@ import sys
 
 sys.path.insert(0, '/home/n.dallanoce/PyCharm/pretraining')
 from custom_datasets.MBartPreTrainingDataset import MBartPreTrainingDataset, get_item_for_iterable
+from custom_datasets.RandomReplayDataset import RandomReplayDataset
 from trainers.MBartTrainer import MBartTrainer
 
 if __name__ == '__main__':
@@ -36,12 +36,8 @@ if __name__ == '__main__':
     # translation_ds = load_dataset("g8a9/europarl_en-it",
     #                             cache_dir="/data/n.dallanoce/europarl", split=f"train",
     #                             ignore_verifications=True)
-    tok_en = MBartTokenizerFast.from_pretrained(tok_name, src_lang="en_XX")
-    tok_fr = MBartTokenizerFast.from_pretrained(tok_name, src_lang="fr_XX")
-    tok_es = MBartTokenizerFast.from_pretrained(tok_name, src_lang="es_XX")
-    tok_de = MBartTokenizerFast.from_pretrained(tok_name, src_lang="de_DE")
 
-    training_args = Seq2SeqTrainingArguments(f"/home/n.dallanoce/PyCharm/pretraining/weights/{project_name}_pre_metr",
+    training_args = Seq2SeqTrainingArguments(f"/home/n.dallanoce/PyCharm/pretraining/weights/{project_name}_replay_metr",
                                              overwrite_output_dir=True,
                                              label_names=['labels'],
                                              do_train=True,
@@ -63,9 +59,9 @@ if __name__ == '__main__':
                                              dataloader_drop_last=True,
                                              dataloader_pin_memory=True,
                                              dataloader_num_workers=4,
-                                             metric_for_best_model="pretraining_avg",
+                                             metric_for_best_model="pretraining_loss_de",
                                              greater_is_better=False,
-                                             warmup_steps=10000,
+                                             warmup_steps=0,
                                              save_total_limit=1,
                                              report_to=["wandb"]
                                              )
@@ -86,6 +82,11 @@ if __name__ == '__main__':
                             cache_dir="/data/n.dallanoce/cc100/huggingface",
                             split=f"train[:40000000]",
                             verification_mode='no_checks')
+
+    tok_en = MBartTokenizerFast.from_pretrained(tok_name, src_lang="en_XX")
+    tok_fr = MBartTokenizerFast.from_pretrained(tok_name, src_lang="fr_XX")
+    tok_es = MBartTokenizerFast.from_pretrained(tok_name, src_lang="es_XX")
+    tok_de = MBartTokenizerFast.from_pretrained(tok_name, src_lang="de_DE")
 
     en_pre_train_ds = MBartPreTrainingDataset(cc100_en, tok_en, input_max_length=128)
     fr_pre_train_ds = MBartPreTrainingDataset(cc100_fr, tok_fr, input_max_length=128)
@@ -109,7 +110,7 @@ if __name__ == '__main__':
 
     # model: MBartForConditionalGeneration = MBartForConditionalGeneration(mbart_config)
     model: MBartForConditionalGeneration = MBartForConditionalGeneration.from_pretrained(
-        "/home/n.dallanoce/PyCharm/pretraining/weights/mbart_pre_en-fr_de-M2_pre_metr/checkpoint-10000")
+        "/home/n.dallanoce/PyCharm/pretraining/weights/mbart_pre_en-fr-M1_pre_metr/checkpoint-100000")
 
     cc100_en_val = load_dataset("cc100", lang="en",
                                 cache_dir="/data/n.dallanoce/cc100/huggingface",
@@ -135,10 +136,12 @@ if __name__ == '__main__':
                                 verification_mode='no_checks')
     val_es_pre_train = MBartPreTrainingDataset(cc100_es_val, tok_es, input_max_length=128)
 
-    pre_train_ds = torch.utils.data.ConcatDataset([es_pre_train_ds])
+    # pre_train_ds = torch.utils.data.ConcatDataset([es_pre_train_ds])
+    pre_train_ds = RandomReplayDataset(curr_exp_ds_lst=[de_pre_train_ds],
+                                       prev_exp_ds_lst=[en_pre_train_ds, fr_pre_train_ds])
     trainer = MBartTrainer(model, training_args,
                            train_dataset=pre_train_ds,
                            eval_dataset={"pretraining": ConcatDataset(
-                               [val_en_pre_train, val_fr_pre_train, val_de_pre_train, val_es_pre_train])}
+                               [val_en_pre_train, val_fr_pre_train, val_de_pre_train])}
                            )
     trainer.train(resume_from_checkpoint=False)

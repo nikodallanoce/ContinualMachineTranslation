@@ -25,7 +25,7 @@ class MT6TranslationDataset(Dataset):
                  skip_rows: Set[int] = None, noise_fn=MT6NoiseFunction(pnat=True)):
         super(MT6TranslationDataset, self).__init__()
 
-        self.hugg_dataset: datasets.Dataset = hugg_dataset
+        self.dataset: datasets.Dataset = hugg_dataset
 
         if isinstance(tokenizer, MT6TokenizerFast):
             tok_src_lang, tok_tgt_lang = get_langs_token(src_lang, tgt_lang)
@@ -42,10 +42,10 @@ class MT6TranslationDataset(Dataset):
         self.labels_name: str = "labels" if noise_fn is None else "labels_tsc"
 
     def __len__(self):
-        return len(self.hugg_dataset)
+        return len(self.dataset)
 
     def __getitem__(self, index):
-        sent = self.hugg_dataset[index][self.ds_field]
+        sent = self.dataset[index][self.ds_field]
         src, tgt = sent[self.src_lang], sent[self.tgt_lang]
 
         rng = np.random.default_rng(index)
@@ -107,9 +107,9 @@ class MT6TranslationDataset(Dataset):
         src: str = ""
         tgt: str = ""
         while len(src.split(" ")) < self.min_words:
-            index = rng.integers(0, len(self.hugg_dataset), dtype=int)
+            index = rng.integers(0, len(self.dataset), dtype=int)
             if index not in self.skip_rows:
-                sent = self.hugg_dataset[index][self.ds_field]
+                sent = self.dataset[index][self.ds_field]
                 src, tgt = sent[self.src_lang], sent[self.tgt_lang]
         return src, tgt
 

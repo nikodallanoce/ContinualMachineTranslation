@@ -26,7 +26,7 @@ project_name = "mt6_ft_en-fr(MF1)"
 os.environ["WANDB_PROJECT"] = project_name
 
 # save your trained model checkpoint to wandb
-os.environ["WANDB_LOG_MODEL"] = "end"
+os.environ["WANDB_LOG_MODEL"] = "false"
 
 # turn off watch to log faster
 
@@ -36,17 +36,17 @@ os.environ["WANDB_WATCH"] = "false"
 if __name__ == '__main__':
 
     training_args = Seq2SeqTrainingArguments(
-        f"/home/n.dallanoce/PyCharm/pretraining/weights/{project_name}_twe_cnct_lang_llr",
+        f"/home/n.dallanoce/PyCharm/pretraining/weights/{project_name}_twe_eq_100",
         overwrite_output_dir=True,
         # label_names=['labels_pnat', 'labels_transl'],
         do_train=True,
-        per_device_train_batch_size=128,
-        gradient_accumulation_steps=1,
+        per_device_train_batch_size=64,
+        gradient_accumulation_steps=4,
         # num_train_epochs=1,
         optim="adamw_torch",
-        learning_rate=6e-4,
-        lr_scheduler_type="cosine",
-        max_steps=int(2e5),
+        learning_rate=5e-4,
+        lr_scheduler_type="linear",
+        max_steps=int(1e5),
         logging_steps=500,
         save_steps=10000,
         save_strategy="steps",
@@ -66,14 +66,20 @@ if __name__ == '__main__':
         report_to=["wandb"],
         ignore_data_skip=False
     )
-    tok_name = "nikodallanoce/mt6_tok_fast"  # "nikodallanoce/mt5-cc4-vanilla-32k-5"
-    try:
+
+    train_strategy = TrainingStrategy.FINE_TUNING
+
+    if train_strategy == TrainingStrategy.FINE_TUNING:
+        tok_name = "nikodallanoce/mt5-cc4-vanilla-32k-5"
         tok = AutoTokenizer.from_pretrained(tok_name)
         max_inp_len = 133
-    except ValueError:
+    elif train_strategy == TrainingStrategy.FINE_TUNING_LANG:
+        tok_name = "nikodallanoce/mt6_tok_fast"
         tok = MT6TokenizerFast.from_pretrained(tok_name)
         max_inp_len = 128
         print("Using lang tokens")
+    else:
+        raise ValueError("Select FINE TUNING or FINE TUNING LANG")
 
     translation_ds = load_dataset("yhavinga/ccmatrix", "en-fr",
                                   cache_dir="/data/n.dallanoce/cc_en_fr",
@@ -183,10 +189,10 @@ if __name__ == '__main__':
     # model = MT5ForConditionalGeneration(
     #     MT5Config(vocab_size=len(tok), max_length=max_inp_len, tie_word_embeddings=True))
     model = MT5ForConditionalGeneration.from_pretrained(
-        "/home/n.dallanoce/PyCharm/pretraining/weights/mt6_pre_en-fr(M1)_twe/checkpoint-100000")
+        "/home/n.dallanoce/PyCharm/pretraining/weights/mt6_pre_en-fr(M1)_twe_eq/checkpoint-180000")
 
     model.resize_token_embeddings(len(tok))
-    trainer = MT6Trainer(TrainingStrategy.FINE_TUNING_LANG, model, training_args,
+    trainer = MT6Trainer(train_strategy, model, training_args,
                          train_dataset=ConcatDataset([en_fr_ds, fr_en_ds]),
                          eval_dataset={"bleu": ConcatDataset([val_ds_fr_en])},
                          tokenizer_name=tok_name

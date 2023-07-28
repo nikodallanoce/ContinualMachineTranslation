@@ -1,3 +1,4 @@
+import copy
 from functools import partial
 
 import datasets
@@ -22,20 +23,20 @@ import os
 
 # os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"  # see issue #152
 # os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-project_name = "mt6_pre_en-fr_de(M2)"
+project_name = "mt6_pre_en-de"
 os.environ["WANDB_PROJECT"] = project_name
 
 # save your trained model checkpoint to wandb
-os.environ["WANDB_LOG_MODEL"] = "end"
+os.environ["WANDB_LOG_MODEL"] = "false"
 
 # turn off watch to log faster
 os.environ["WANDB_WATCH"] = "false"
 
 
 def run_server():
-    training_args = Seq2SeqTrainingArguments(f"/home/n.dallanoce/PyCharm/pretraining/weights/{project_name}_twe",
+    training_args = Seq2SeqTrainingArguments(f"/home/n.dallanoce/PyCharm/pretraining/weights/{project_name}_twe_eq",
                                              overwrite_output_dir=True,
-                                             # label_names=['labels_pnat', 'labels_transl'],
+                                             label_names=['labels'],
                                              do_train=True,
                                              per_device_train_batch_size=128,
                                              gradient_accumulation_steps=1,
@@ -43,9 +44,12 @@ def run_server():
                                              optim="adamw_torch",
                                              learning_rate=1e-4,
                                              lr_scheduler_type="linear",
-                                             max_steps=int(1e5),
+                                             max_steps=int(1.8e5),
                                              logging_steps=500,
                                              save_steps=10000,
+                                             evaluation_strategy="steps",
+                                             eval_steps=5000,
+                                             logging_first_step=False,
                                              save_strategy="steps",
                                              log_level="info",
                                              fp16=True,
@@ -55,9 +59,7 @@ def run_server():
                                              # load_best_model_at_end=True,
                                              # prediction_loss_only=True,
                                              save_total_limit=1,
-                                             # evaluation_strategy = "steps",
-                                             # eval_steps = 1600,
-                                             # metric_for_best_model="loss",
+                                             metric_for_best_model="pretraining_loss_de",
                                              greater_is_better=False,
                                              report_to=["wandb"]
                                              )
@@ -75,7 +77,7 @@ if __name__ == '__main__':
     # tsc_noise_fn = MT5NoiseFunction(0.5, 3)
     tsc_noise_fn = MT6NoiseFunction(n_groups=n_groups, noise_density=tsc_noise_density)
 
-    tok_en = MT5TokenizerFast.from_pretrained("nikodallanoce/mt5-cc4-vanilla-32k-5")
+    tok = MT5TokenizerFast.from_pretrained("nikodallanoce/mt5-cc4-vanilla-32k-5")
     training_args = run_server()
 
     # pre_train_ds = MT6PreTrainingDataset(pre_train_ds, tok_en, noise_fn=MT5NoiseFunction())
@@ -114,20 +116,20 @@ if __name__ == '__main__':
                             verification_mode='no_checks')
     cc100_de = load_dataset("cc100", lang="de",
                             cache_dir="/data/n.dallanoce/cc100/huggingface",
-                            split=f"train[:20000000]",
+                            split=f"train[:10000000]",
                             verification_mode='no_checks')
     cc100_es = load_dataset("cc100", lang="es",
                             cache_dir="/data/n.dallanoce/cc100/huggingface",
-                            split=f"train[:20000000]",
+                            split=f"train[:10000000]",
                             verification_mode='no_checks')
 
-    en_pre_train_ds = MT6PreTrainingDataset(cc100_en, tok_en, input_max_length=max_inp_len,
+    en_pre_train_ds = MT6PreTrainingDataset(cc100_en, tok, input_max_length=max_inp_len,
                                             noise_fn=pnat_noise_fn)
-    fr_pre_train_ds = MT6PreTrainingDataset(cc100_fr, tok_en, input_max_length=max_inp_len,
+    fr_pre_train_ds = MT6PreTrainingDataset(cc100_fr, tok, input_max_length=max_inp_len,
                                             noise_fn=pnat_noise_fn)
-    de_pre_train_ds = MT6PreTrainingDataset(cc100_de, tok_en, input_max_length=max_inp_len,
+    de_pre_train_ds = MT6PreTrainingDataset(cc100_de, tok, input_max_length=max_inp_len,
                                             noise_fn=pnat_noise_fn)
-    es_pre_train_ds = MT6PreTrainingDataset(cc100_es, tok_en, input_max_length=max_inp_len,
+    es_pre_train_ds = MT6PreTrainingDataset(cc100_es, tok, input_max_length=max_inp_len,
                                             noise_fn=pnat_noise_fn)
 
     en_fr_transl_ds = load_dataset("yhavinga/ccmatrix", "en-fr",
@@ -143,7 +145,7 @@ if __name__ == '__main__':
                                    split=f"train[0:20000000]",
                                    verification_mode='no_checks')
 
-    en_fr_tsc_ds = MT6TranslationDataset(en_fr_transl_ds, tok_en, src_lang="en", tgt_lang="fr",
+    en_fr_tsc_ds = MT6TranslationDataset(en_fr_transl_ds, tok, src_lang="en", tgt_lang="fr",
                                          input_max_length=max_inp_len,
                                          noise_fn=tsc_noise_fn,
                                          skip_rows={2372581, 6968567, 10821748, 11060884, 15767927, 25424386, 29725453,
@@ -165,7 +167,7 @@ if __name__ == '__main__':
                                                     324665884
                                                     })
 
-    en_de_tsc_ds = MT6TranslationDataset(en_de_transl_ds, tok_en, src_lang="en", tgt_lang="de",
+    en_de_tsc_ds = MT6TranslationDataset(en_de_transl_ds, tok, src_lang="en", tgt_lang="de",
                                          input_max_length=max_inp_len,
                                          noise_fn=tsc_noise_fn,
                                          skip_rows={2801169, 3015352, 19775415, 20367662, 20785493, 23611708, 25969951,
@@ -184,7 +186,7 @@ if __name__ == '__main__':
                                                     105831028, 111265110, 145839309, 164197978, 185766813, 188391705,
                                                     198131661, 198435949, 199964247, 230948265, 240673484, 245361151,
                                                     246664703})
-    en_es_tsc_ds = MT6TranslationDataset(en_es_transl_ds, tok_en, src_lang="en", tgt_lang="es",
+    en_es_tsc_ds = MT6TranslationDataset(en_es_transl_ds, tok, src_lang="en", tgt_lang="es",
                                          input_max_length=max_inp_len,
                                          # noise_fn=MT6NoiseFunction(n_groups=n_groups, noise_density=tsc_noise_density,
                                          #                           pnat=True),
@@ -208,21 +210,66 @@ if __name__ == '__main__':
                                                     354125230, 356161656, 357435039, 364171762, 378343556, 380637241,
                                                     393342927, 398415139, 399539622, 404908528, 407859230})
 
+    pre_en_val = copy.copy(en_pre_train_ds)
+    pre_en_val.dataset = load_dataset("cc100", lang="en",
+                                      cache_dir="/data/n.dallanoce/cc100/huggingface",
+                                      split=f"train[40000000:40020000]",
+                                      verification_mode='no_checks')
+
+    pre_fr_val = copy.copy(fr_pre_train_ds)
+    pre_fr_val.dataset = load_dataset("cc100", lang="fr",
+                                      cache_dir="/data/n.dallanoce/cc100/huggingface",
+                                      split=f"train[40000000:40020000]",
+                                      verification_mode='no_checks')
+    pre_de_val = copy.copy(de_pre_train_ds)
+    pre_de_val.dataset = load_dataset("cc100", lang="de",
+                                      cache_dir="/data/n.dallanoce/cc100/huggingface",
+                                      split=f"train[40000000:40020000]",
+                                      verification_mode='no_checks')
+    pre_es_val = copy.copy(es_pre_train_ds)
+    pre_es_val.dataset = load_dataset("cc100", lang="es",
+                                      cache_dir="/data/n.dallanoce/cc100/huggingface",
+                                      split=f"train[40000000:40020000]",
+                                      verification_mode='no_checks')
+
+    en_fr_tsc_val = copy.copy(en_fr_tsc_ds)
+    en_fr_tsc_val.dataset = load_dataset("yhavinga/ccmatrix", "en-fr",
+                                         cache_dir="/data/n.dallanoce/cc_en_fr",
+                                         split=f"train[40000000:40020000]",
+                                         verification_mode='no_checks')
+    en_de_tsc_val = copy.copy(en_de_tsc_ds)
+    en_de_tsc_val.dataset = load_dataset("yhavinga/ccmatrix", "en-de",
+                                         cache_dir="/data/n.dallanoce/cc_en_de",
+                                         split=f"train[40000000:40020000]",
+                                         verification_mode='no_checks')
+    en_es_tsc_val = copy.copy(en_es_tsc_ds)
+    en_es_tsc_val.dataset = load_dataset("yhavinga/ccmatrix", "en-es",
+                                         cache_dir="/data/n.dallanoce/cc_en_es",
+                                         split=f"train[40000000:40020000]",
+                                         verification_mode='no_checks')
+
+    # model = MT6.from_pretrained("/home/n.dallanoce/PyCharm/pretraining/weights/mt6_pre_en-fr(M1)_twe/checkpoint-100000")
+
     # model = MT6(
     #     MT5Config(num_layers=6, d_model=512, num_heads=8, d_ff=2048, vocab_size=len(tok_en), max_length=max_inp_len,
     #               tie_word_embeddings=False))
-    #model = MT6(MT5Config(vocab_size=len(tok_en), max_length=max_inp_len, tie_word_embeddings=True))
+    model = MT6(MT5Config(vocab_size=len(tok), max_length=max_inp_len, tie_word_embeddings=True))
+    # model = MT6(T5Config(vocab_size=len(tok), max_length=max_inp_len, feed_forward_proj= "gelu", decoder_start_token_id=tok.pad_token_id))
+
     # model = MT6(
     #     T5Config(vocab_size=len(tok_en), tie_word_embeddings=False, dense_act_fn="gelu_new",
     #              feed_forward_proj="gated-gelu", decoder_start_token_id=0))
     # new_config = T5ForConditionalGeneration.from_pretrained("google/t5-v1_1-small").config
+    # model = MT6.from_pretrained(
+    #     "/home/n.dallanoce/PyCharm/pretraining/weights/mt6_pre_en-fr_de(M2)_twe_eq/checkpoint-180000")
     # new_config.vocab_size = len(tok_en)
     # model = MT6(new_config)
-    model = MT6.from_pretrained("/home/n.dallanoce/PyCharm/pretraining/weights/mt6_pre_en-fr(M1)_twe/checkpoint-100000")
 
-    train_ds = ConcatDataset([de_pre_train_ds, en_de_tsc_ds])
+    train_ds = ConcatDataset([en_pre_train_ds, de_pre_train_ds, en_de_tsc_ds])
     trainer = MT6Trainer(TrainingStrategy.PRE_TRAINING, model, training_args,
                          train_dataset=train_ds,
+                         eval_dataset={"pretraining": ConcatDataset(
+                             [pre_en_val, pre_de_val, en_de_tsc_val])}
                          # optimizers=(optimizer, lr_scheduler)
                          )
     trainer.train(resume_from_checkpoint=False)
