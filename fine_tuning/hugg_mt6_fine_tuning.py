@@ -36,12 +36,12 @@ os.environ["WANDB_WATCH"] = "false"
 if __name__ == '__main__':
 
     training_args = Seq2SeqTrainingArguments(
-        f"/home/n.dallanoce/PyCharm/pretraining/weights/{project_name}_twe_eq_100",
+        f"/home/n.dallanoce/PyCharm/pretraining/weights/{project_name}_10_10_20_s-25k",
         overwrite_output_dir=True,
         # label_names=['labels_pnat', 'labels_transl'],
         do_train=True,
-        per_device_train_batch_size=64,
-        gradient_accumulation_steps=4,
+        per_device_train_batch_size=128,
+        gradient_accumulation_steps=1,
         # num_train_epochs=1,
         optim="adamw_torch",
         learning_rate=5e-4,
@@ -108,7 +108,7 @@ if __name__ == '__main__':
                                                 324665884})
     translation_ds_en_de = load_dataset("yhavinga/ccmatrix", "en-de",
                                         cache_dir="/data/n.dallanoce/cc_en_de",
-                                        split=f"train[0:25000000]",
+                                        split=f"train[0:35000000]",
                                         verification_mode='no_checks')
 
     en_de_ds = MT6TranslationDataset(translation_ds_en_de, tok, src_lang="en", tgt_lang="de", noise_fn=None,
@@ -132,7 +132,7 @@ if __name__ == '__main__':
 
     translation_ds_en_es = load_dataset("yhavinga/ccmatrix", "en-es",
                                         cache_dir="/data/n.dallanoce/cc_en_es",
-                                        split=f"train[0:25000000]",
+                                        split=f"train[0:35000000]",
                                         verification_mode='no_checks')
 
     en_es_ds = MT6TranslationDataset(translation_ds_en_es, tok, src_lang="en", tgt_lang="es",
@@ -189,9 +189,11 @@ if __name__ == '__main__':
     # model = MT5ForConditionalGeneration(
     #     MT5Config(vocab_size=len(tok), max_length=max_inp_len, tie_word_embeddings=True))
     model = MT5ForConditionalGeneration.from_pretrained(
-        "/home/n.dallanoce/PyCharm/pretraining/weights/mt6_pre_en-fr(M1)_twe_eq/checkpoint-180000")
+        "/home/n.dallanoce/PyCharm/pretraining/weights/mt6_pre_en-fr(M1)_10_10_20_s/checkpoint-180000")
 
-    model.resize_token_embeddings(len(tok))
+    # if train_strategy == TrainingStrategy.FINE_TUNING_LANG:
+    #     model.resize_token_embeddings(len(tok))
+
     trainer = MT6Trainer(train_strategy, model, training_args,
                          train_dataset=ConcatDataset([en_fr_ds, fr_en_ds]),
                          eval_dataset={"bleu": ConcatDataset([val_ds_fr_en])},

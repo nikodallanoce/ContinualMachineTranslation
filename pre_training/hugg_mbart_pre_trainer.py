@@ -8,7 +8,7 @@ from transformers import Seq2SeqTrainingArguments, MBartConfig, \
     MBartForConditionalGeneration, MBartTokenizerFast
 import os
 # set the wandb project where this run will be logged
-project_name = "mbart_pre_en-fr_de-M2"
+project_name = "S2_mbart_pre_en-fr_de_es(M3)"
 os.environ["WANDB_PROJECT"] = project_name
 
 # save your trained model checkpoint to wandb
@@ -37,7 +37,7 @@ if __name__ == '__main__':
     #                             cache_dir="/data/n.dallanoce/europarl", split=f"train",
     #                             ignore_verifications=True)
 
-    training_args = Seq2SeqTrainingArguments(f"/home/n.dallanoce/PyCharm/pretraining/weights/{project_name}_replay_metr",
+    training_args = Seq2SeqTrainingArguments(f"/home/n.dallanoce/PyCharm/pretraining/weights/{project_name}_replay",
                                              overwrite_output_dir=True,
                                              label_names=['labels'],
                                              do_train=True,
@@ -47,7 +47,7 @@ if __name__ == '__main__':
                                              per_device_train_batch_size=128,
                                              gradient_accumulation_steps=1,
                                              # num_train_epochs=1,
-                                             max_steps=int(1e5),
+                                             max_steps=int(1.8e5),
                                              logging_steps=500,
                                              save_steps=10000,
                                              evaluation_strategy="steps",
@@ -59,7 +59,7 @@ if __name__ == '__main__':
                                              dataloader_drop_last=True,
                                              dataloader_pin_memory=True,
                                              dataloader_num_workers=4,
-                                             metric_for_best_model="pretraining_loss_de",
+                                             metric_for_best_model="pretraining_loss_es",
                                              greater_is_better=False,
                                              warmup_steps=0,
                                              save_total_limit=1,
@@ -110,7 +110,7 @@ if __name__ == '__main__':
 
     # model: MBartForConditionalGeneration = MBartForConditionalGeneration(mbart_config)
     model: MBartForConditionalGeneration = MBartForConditionalGeneration.from_pretrained(
-        "/home/n.dallanoce/PyCharm/pretraining/weights/mbart_pre_en-fr-M1_pre_metr/checkpoint-100000")
+        "/home/n.dallanoce/PyCharm/pretraining/weights/S2_mbart_pre_en-fr_de(M2)_replay/checkpoint-180000")
 
     cc100_en_val = load_dataset("cc100", lang="en",
                                 cache_dir="/data/n.dallanoce/cc100/huggingface",
@@ -137,11 +137,11 @@ if __name__ == '__main__':
     val_es_pre_train = MBartPreTrainingDataset(cc100_es_val, tok_es, input_max_length=128)
 
     # pre_train_ds = torch.utils.data.ConcatDataset([es_pre_train_ds])
-    pre_train_ds = RandomReplayDataset(curr_exp_ds_lst=[de_pre_train_ds],
-                                       prev_exp_ds_lst=[en_pre_train_ds, fr_pre_train_ds])
+    pre_train_ds = RandomReplayDataset(curr_exp_ds_lst=[es_pre_train_ds],
+                                       prev_exp_ds_lst=[en_pre_train_ds, fr_pre_train_ds, de_pre_train_ds])
     trainer = MBartTrainer(model, training_args,
                            train_dataset=pre_train_ds,
                            eval_dataset={"pretraining": ConcatDataset(
-                               [val_en_pre_train, val_fr_pre_train, val_de_pre_train])}
+                               [val_en_pre_train, val_fr_pre_train, val_de_pre_train, val_es_pre_train])}
                            )
     trainer.train(resume_from_checkpoint=False)
