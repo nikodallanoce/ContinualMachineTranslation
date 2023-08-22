@@ -171,7 +171,7 @@ if __name__ == '__main__':
     dev = "cuda:0" if torch.cuda.is_available() else "cpu"
     #     # tok_en = MBartTokenizer.from_pretrained("facebook/mbart-large-cc25", lang1="en_XX", lang2="fr_XX")
     model: Union[MBartForConditionalGeneration, MT5ForConditionalGeneration] = AutoModelForSeq2SeqLM.from_pretrained(
-        "/home/n.dallanoce/PyCharm/pretraining/weights/mbart_ft_en-de-Mf2_replay/checkpoint-100000").to(dev)
+        "/home/n.dallanoce/PyCharm/pretraining/weights/mbart_ft_en-fr-Mf1_GA/checkpoint-85000").to(dev)
     # translation_ds = load_dataset("yhavinga/ccmatrix", "en-es",
     #                               cache_dir="/data/n.dallanoce/cc_en_es",
     #                               split=f"train[28000000:28003000]",

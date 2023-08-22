@@ -22,7 +22,7 @@ import os
 
 # os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"  # see issue #152
 # os.environ["CUDA_VISIBLE_DEVICES"] = "1"
-project_name = "mt6_ft_en-fr(MF1)"
+project_name = "mt6_pre_es_ft_en-de(MF2-3)"
 os.environ["WANDB_PROJECT"] = project_name
 
 # save your trained model checkpoint to wandb
@@ -36,7 +36,7 @@ os.environ["WANDB_WATCH"] = "false"
 if __name__ == '__main__':
 
     training_args = Seq2SeqTrainingArguments(
-        f"/home/n.dallanoce/PyCharm/pretraining/weights/{project_name}_10_10_20_s-25k",
+        f"/home/n.dallanoce/PyCharm/pretraining/weights/{project_name}_10_20_tb",
         overwrite_output_dir=True,
         # label_names=['labels_pnat', 'labels_transl'],
         do_train=True,
@@ -81,12 +81,12 @@ if __name__ == '__main__':
     else:
         raise ValueError("Select FINE TUNING or FINE TUNING LANG")
 
-    translation_ds = load_dataset("yhavinga/ccmatrix", "en-fr",
+    translation_ds_en_fr = load_dataset("yhavinga/ccmatrix", "en-fr",
                                   cache_dir="/data/n.dallanoce/cc_en_fr",
-                                  split=f"train[0:25000000]",
+                                  split=f"train[0:35000000]",
                                   verification_mode='no_checks')
 
-    en_fr_ds = MT6TranslationDataset(translation_ds, tok, src_lang="en", tgt_lang="fr", input_max_length=max_inp_len,
+    en_fr_ds = MT6TranslationDataset(translation_ds_en_fr, tok, src_lang="en", tgt_lang="fr", input_max_length=max_inp_len,
                                      noise_fn=None,
                                      skip_rows={2372581, 6968567, 10821748, 11060884, 15767927, 25424386, 29725453,
                                                 45747545, 47137798, 50129051, 59177023, 59929203, 61511560, 75542580,
@@ -94,7 +94,7 @@ if __name__ == '__main__':
                                                 162558439, 164150364, 175041176, 184342700, 190148649, 190148650,
                                                 192658445, 220362372, 245452855, 256201123, 271393589, 272871204,
                                                 272877704, 281597372, 294584774, 296244867, 321887045})
-    fr_en_ds = MT6TranslationDataset(translation_ds, tok, src_lang="fr", tgt_lang="en", input_max_length=max_inp_len,
+    fr_en_ds = MT6TranslationDataset(translation_ds_en_fr, tok, src_lang="fr", tgt_lang="en", input_max_length=max_inp_len,
                                      noise_fn=None,
                                      skip_rows={35870050, 48145532, 52684654, 58751416, 58882125, 65601877, 67930837,
                                                 77241694, 92977227, 110216804, 128101180, 134271264, 141335940,
@@ -189,14 +189,14 @@ if __name__ == '__main__':
     # model = MT5ForConditionalGeneration(
     #     MT5Config(vocab_size=len(tok), max_length=max_inp_len, tie_word_embeddings=True))
     model = MT5ForConditionalGeneration.from_pretrained(
-        "/home/n.dallanoce/PyCharm/pretraining/weights/mt6_pre_en-fr(M1)_10_10_20_s/checkpoint-180000")
+        "/home/n.dallanoce/PyCharm/pretraining/weights/mt6_pre_en-fr_de_es(M3)_10_20_tb/checkpoint-180000")
 
     # if train_strategy == TrainingStrategy.FINE_TUNING_LANG:
     #     model.resize_token_embeddings(len(tok))
 
     trainer = MT6Trainer(train_strategy, model, training_args,
-                         train_dataset=ConcatDataset([en_fr_ds, fr_en_ds]),
-                         eval_dataset={"bleu": ConcatDataset([val_ds_fr_en])},
+                         train_dataset=ConcatDataset([en_de_ds, de_en_ds]),
+                         eval_dataset={"bleu": ConcatDataset([val_ds_de_en])},
                          tokenizer_name=tok_name
                          )
 

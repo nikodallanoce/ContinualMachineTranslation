@@ -3,10 +3,11 @@ from typing import Union, Optional, Dict, Callable, List, Tuple, Any
 
 import torch
 from torch import nn
-from torch.utils.data import Dataset, ConcatDataset
+from torch.utils.data import Dataset, ConcatDataset, BatchSampler
 from transformers import Seq2SeqTrainer, PreTrainedModel, TrainingArguments, DataCollator, PreTrainedTokenizerBase, \
     EvalPrediction, TrainerCallback
 
+from continual.cl_tools import CLSampler
 from custom_datasets.MBartPreTrainingDataset import MBartPreTrainingDataset
 from custom_datasets.MT6PreTrainingDataset import MT6PreTrainingDataset
 from custom_datasets.MT6TranslationDataset import MT6TranslationDataset
@@ -23,10 +24,15 @@ class CustomTrainer(Seq2SeqTrainer, ABC):
                  callbacks: Optional[List[TrainerCallback]] = None,
                  optimizers: Tuple[torch.optim.Optimizer, torch.optim.lr_scheduler.LambdaLR] = (None, None),
                  preprocess_logits_for_metrics: Optional[Callable[[torch.Tensor, torch.Tensor], torch.Tensor]] = None,
-                 tokenizer_name: str = None):
+                 tokenizer_name: str = None,
+                 batch_sampler: CLSampler = None):
         super().__init__(model, args, data_collator, train_dataset, eval_dataset, tokenizer, model_init,
                          compute_metrics, callbacks, optimizers, preprocess_logits_for_metrics)
-        self.tokenizer_name = tokenizer_name
+        self.tokenizer_name: str = tokenizer_name
+        self.batch_sampler: CLSampler = batch_sampler
+        if batch_sampler is not None:
+            self.batch_sampler: CLSampler = batch_sampler.clone(self.args.per_device_train_batch_size,
+                                                                self.args.dataloader_drop_last)
 
     def evaluate(self, eval_dataset: Optional[Dataset] = None, ignore_keys: Optional[List[str]] = None,
                  metric_key_prefix: str = "eval", **gen_kwargs) -> Dict[str, float]:
@@ -52,7 +58,8 @@ class CustomTrainer(Seq2SeqTrainer, ABC):
         self.model.train()
         return return_metrics
 
-    def compute_new_pretraining_metrics(self, eval_ds: Union[MBartPreTrainingDataset, MT6PreTrainingDataset, MT6TranslationDataset]):
+    def compute_new_pretraining_metrics(self, eval_ds: Union[
+        MBartPreTrainingDataset, MT6PreTrainingDataset, MT6TranslationDataset]):
         ris: Dict[str, float] = compute_pretraining_metrics(self.model, eval_ds, batch_size=16, device="cuda:0")
         return_metrics: Dict[str, float] = {}
         for k_r, v_r in ris.items():

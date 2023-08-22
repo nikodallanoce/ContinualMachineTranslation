@@ -23,7 +23,7 @@ import os
 
 # os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"  # see issue #152
 # os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-project_name = "mt6_pre_en-fr(M1)"
+project_name = "mt6_pre_en-fr_de_es(M3)"
 os.environ["WANDB_PROJECT"] = project_name
 
 # save your trained model checkpoint to wandb
@@ -35,12 +35,12 @@ os.environ["WANDB_WATCH"] = "false"
 
 def run_server():
     training_args = Seq2SeqTrainingArguments(
-        f"/home/n.dallanoce/PyCharm/pretraining/weights/{project_name}_10_10_20_tb",
+        f"/home/n.dallanoce/PyCharm/pretraining/weights/{project_name}_10_20_tb",
         overwrite_output_dir=True,
         label_names=['labels'],
         do_train=True,
-        per_device_train_batch_size=64,
-        gradient_accumulation_steps=4,
+        per_device_train_batch_size=128,
+        gradient_accumulation_steps=1,
         # num_train_epochs=1,
         optim="adamw_torch",
         learning_rate=1e-4,
@@ -60,10 +60,10 @@ def run_server():
         # load_best_model_at_end=True,
         # prediction_loss_only=True,
         save_total_limit=1,
-        metric_for_best_model="pretraining_loss_fr",
+        metric_for_best_model="pretraining_loss_es",
         greater_is_better=False,
         report_to=["wandb"]
-        )
+    )
     return training_args
 
 
@@ -109,19 +109,19 @@ if __name__ == '__main__':
 
     cc100_fr = load_dataset("cc100", lang="fr",
                             cache_dir="/data/n.dallanoce/cc100/huggingface",
-                            split=f"train[:15000000]",
+                            split=f"train[:10000000]",
                             verification_mode='no_checks')
     cc100_en = load_dataset("cc100", lang="en",
                             cache_dir="/data/n.dallanoce/cc100/huggingface",
-                            split=f"train[:15000000]",
+                            split=f"train[:10000000]",
                             verification_mode='no_checks')
     cc100_de = load_dataset("cc100", lang="de",
                             cache_dir="/data/n.dallanoce/cc100/huggingface",
-                            split=f"train[:15000000]",
+                            split=f"train[:10000000]",
                             verification_mode='no_checks')
     cc100_es = load_dataset("cc100", lang="es",
                             cache_dir="/data/n.dallanoce/cc100/huggingface",
-                            split=f"train[:15000000]",
+                            split=f"train[:10000000]",
                             verification_mode='no_checks')
 
     en_pre_train_ds = MT6PreTrainingDataset(cc100_en, tok, input_max_length=max_inp_len,
@@ -135,15 +135,15 @@ if __name__ == '__main__':
 
     en_fr_transl_ds = load_dataset("yhavinga/ccmatrix", "en-fr",
                                    cache_dir="/data/n.dallanoce/cc_en_fr",
-                                   split=f"train[35000000:65000000]",  # 35000000
+                                   split=f"train[35000000:55000000]",  # 35000000
                                    verification_mode='no_checks')
     en_de_transl_ds = load_dataset("yhavinga/ccmatrix", "en-de",
                                    cache_dir="/data/n.dallanoce/cc_en_de",
-                                   split=f"train[35000000:65000000]",
+                                   split=f"train[35000000:55000000]",
                                    verification_mode='no_checks')
     en_es_transl_ds = load_dataset("yhavinga/ccmatrix", "en-es",
                                    cache_dir="/data/n.dallanoce/cc_en_es",
-                                   split=f"train[35000000:65000000]",
+                                   split=f"train[35000000:55000000]",
                                    verification_mode='no_checks')
 
     en_fr_tsc_ds = MT6TranslationDataset(en_fr_transl_ds, tok, src_lang="en", tgt_lang="fr",
@@ -251,9 +251,9 @@ if __name__ == '__main__':
 
     # model = MT6.from_pretrained("/home/n.dallanoce/PyCharm/pretraining/weights/mt6_pre_en-fr(M1)_twe/checkpoint-100000")
 
-    model = MT6(
-        MT5Config(num_layers=6, d_model=512, num_heads=8, d_ff=2048, vocab_size=len(tok), max_length=max_inp_len,
-                  tie_word_embeddings=True))
+    # model = MT6(
+    #     MT5Config(num_layers=6, d_model=512, num_heads=8, d_ff=2048, vocab_size=len(tok), max_length=max_inp_len,
+    #               tie_word_embeddings=True))
     # model = MT6(MT5Config(vocab_size=len(tok), max_length=max_inp_len, tie_word_embeddings=True))
     # model = MT6(T5Config(vocab_size=len(tok), max_length=max_inp_len, feed_forward_proj= "gelu", decoder_start_token_id=tok.pad_token_id))
 
@@ -261,16 +261,17 @@ if __name__ == '__main__':
     #     T5Config(vocab_size=len(tok_en), tie_word_embeddings=False, dense_act_fn="gelu_new",
     #              feed_forward_proj="gated-gelu", decoder_start_token_id=0))
     # new_config = T5ForConditionalGeneration.from_pretrained("google/t5-v1_1-small").config
-    # model = MT6.from_pretrained(
-    #     "/home/n.dallanoce/PyCharm/pretraining/weights/mt6_pre_en-fr(M1)_llr/checkpoint-180000")
+    model = MT6.from_pretrained(
+        "/home/n.dallanoce/PyCharm/pretraining/weights/mt6_pre_en-fr_de(M2)_10_20_tb/checkpoint-180000")
     # new_config.vocab_size = len(tok_en)
     # model = MT6(new_config)
 
-    train_ds = ConcatDataset([en_pre_train_ds, fr_pre_train_ds, en_fr_tsc_ds])
+    train_ds = ConcatDataset([es_pre_train_ds, en_es_tsc_ds])
     trainer = MT6Trainer(TrainingStrategy.PRE_TRAINING, model, training_args,
                          train_dataset=train_ds,
                          eval_dataset={"pretraining": ConcatDataset(
-                             [pre_en_val, pre_fr_val, en_fr_tsc_val])}
+                             [pre_en_val, pre_fr_val, en_fr_tsc_val, pre_de_val, en_de_tsc_val, pre_es_val,
+                              en_es_tsc_val])}
                          # optimizers=(optimizer, lr_scheduler)
                          )
     trainer.train(resume_from_checkpoint=False)
