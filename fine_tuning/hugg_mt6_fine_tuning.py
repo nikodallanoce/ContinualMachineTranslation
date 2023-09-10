@@ -1,3 +1,4 @@
+import time
 from functools import partial
 
 import datasets
@@ -22,7 +23,7 @@ import os
 
 # os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"  # see issue #152
 # os.environ["CUDA_VISIBLE_DEVICES"] = "1"
-project_name = "mt6_pre_es_ft_en-de(MF2-3)"
+project_name = "mt6_pre_es_ft_en-fr-MF3-1"
 os.environ["WANDB_PROJECT"] = project_name
 
 # save your trained model checkpoint to wandb
@@ -36,7 +37,7 @@ os.environ["WANDB_WATCH"] = "false"
 if __name__ == '__main__':
 
     training_args = Seq2SeqTrainingArguments(
-        f"/home/n.dallanoce/PyCharm/pretraining/weights/{project_name}_10_20_tb",
+        f"/home/n.dallanoce/PyCharm/pretraining/weights/{project_name}_10_20_tb_replay_8",
         overwrite_output_dir=True,
         # label_names=['labels_pnat', 'labels_transl'],
         do_train=True,
@@ -174,7 +175,7 @@ if __name__ == '__main__':
     #                             verification_mode='no_checks', use_auth_token=True)
     val_ds_es_en = load_dataset("yhavinga/ccmatrix", "en-es",
                                 cache_dir="/data/n.dallanoce/cc_en_es",
-                                split=f"train[28000000:28003000]",
+                                split=f"train[40000000:40003000]",
                                 verification_mode='no_checks').with_format("torch", columns=['translation'])
     val_ds_config_en_fr = val_ds_fr_en.config_name.replace("-", "_")  # works with wmt14 datasets
     val_ds_config_en_de = val_ds_de_en.config_name.replace("-", "_")
@@ -188,15 +189,16 @@ if __name__ == '__main__':
     #     "google/t5-v1_1-small", max_length=max_inp_len, tie_word_embeddings=False)
     # model = MT5ForConditionalGeneration(
     #     MT5Config(vocab_size=len(tok), max_length=max_inp_len, tie_word_embeddings=True))
+    time.sleep(12600)
     model = MT5ForConditionalGeneration.from_pretrained(
-        "/home/n.dallanoce/PyCharm/pretraining/weights/mt6_pre_en-fr_de_es(M3)_10_20_tb/checkpoint-180000")
+        "/home/n.dallanoce/PyCharm/pretraining/weights/mt6_pre_en-fr_de_es(M3)_10_20_tb_replay_8/checkpoint-180000")
 
     # if train_strategy == TrainingStrategy.FINE_TUNING_LANG:
     #     model.resize_token_embeddings(len(tok))
 
     trainer = MT6Trainer(train_strategy, model, training_args,
-                         train_dataset=ConcatDataset([en_de_ds, de_en_ds]),
-                         eval_dataset={"bleu": ConcatDataset([val_ds_de_en])},
+                         train_dataset=ConcatDataset([en_fr_ds, fr_en_ds]),
+                         eval_dataset={"bleu": ConcatDataset([val_ds_fr_en])},
                          tokenizer_name=tok_name
                          )
 

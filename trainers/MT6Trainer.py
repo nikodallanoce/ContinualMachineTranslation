@@ -7,7 +7,7 @@ from datasets import load_dataset
 from torch import nn, Tensor
 from torch.nn.functional import pad
 from torch.nn.utils.rnn import pad_sequence
-from torch.utils.data import Dataset, DataLoader, IterableDataset
+from torch.utils.data import Dataset, DataLoader, IterableDataset, BatchSampler
 from transformers import Trainer, PreTrainedModel, TrainingArguments, DataCollator, PreTrainedTokenizerBase, \
     EvalPrediction, TrainerCallback, MT5Tokenizer
 from transformers.utils import is_torch_fx_proxy
@@ -30,9 +30,10 @@ class MT6Trainer(CustomTrainer):
                  callbacks: Optional[List[TrainerCallback]] = None,
                  optimizers: Tuple[torch.optim.Optimizer, torch.optim.lr_scheduler.LambdaLR] = (None, None),
                  preprocess_logits_for_metrics: Callable[[torch.Tensor, torch.Tensor], torch.Tensor] = None,
-                 tokenizer_name: str = None):
+                 tokenizer_name: str = None,
+                 batch_sampler: BatchSampler = None):
         super().__init__(model, args, data_collator, train_dataset, eval_dataset, tokenizer, model_init,
-                         compute_metrics, callbacks, optimizers, preprocess_logits_for_metrics, tokenizer_name)
+                         compute_metrics, callbacks, optimizers, preprocess_logits_for_metrics, tokenizer_name, batch_sampler)
         self.labels = ["labels_pnat", "labels_tsc"] if task == TrainingStrategy.PRE_TRAINING else ["labels"]
         self.task = task
 
@@ -51,11 +52,11 @@ class MT6Trainer(CustomTrainer):
                                                                                                IterableDataset):
             data_loader = DataLoader(self.train_dataset,
                                      collate_fn=partial(collate_pad_mt6, labels=self.labels,
-                                                        pad_token_id=self.model.config.pad_token_id, num_workers=1),
+                                                        pad_token_id=self.model.config.pad_token_id),
                                      batch_size=self.args.per_device_train_batch_size,
                                      pin_memory=self.args.dataloader_pin_memory)
 
-        else:
+        elif self.batch_sampler is None:
             data_loader = DataLoader(self.train_dataset,
                                      collate_fn=partial(collate_pad_mt6, labels=self.labels,
                                                         pad_token_id=self.model.config.pad_token_id),
@@ -64,6 +65,14 @@ class MT6Trainer(CustomTrainer):
                                      num_workers=self.args.dataloader_num_workers,
                                      pin_memory=self.args.dataloader_pin_memory,
                                      shuffle=True)
+        else:
+            data_loader = DataLoader(self.train_dataset,
+                                     collate_fn=partial(collate_pad_mt6, labels=self.labels,
+                                                        pad_token_id=self.model.config.pad_token_id),
+                                     num_workers=self.args.dataloader_num_workers,
+                                     pin_memory=self.args.dataloader_pin_memory,
+                                     batch_sampler=self.batch_sampler)
+
         return data_loader
 
     def compute_loss_mt5(self, model, inputs, return_outputs=False):

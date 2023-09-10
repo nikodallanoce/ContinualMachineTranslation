@@ -4,9 +4,9 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 from functools import partial
 from warnings import warn
-from typing import List, Dict, Tuple, Set
+from typing import List, Dict, Tuple, Set, Optional
 import matplotlib.pyplot as plt
-from .utils import add_colorbar, cka, gram_rbf, gram_linear
+from .utils import add_colorbar, cka, gram_rbf, gram_linear, linear_CKA
 
 
 class CKA:
@@ -122,6 +122,69 @@ class CKA:
                 self.model2_info['Layers'] += [name]
                 layer.register_forward_hook(partial(self._log_layer, "model2", name))
 
+    # def compare(self,
+    #             dataloader1: DataLoader,
+    #             dataloader2: DataLoader = None,
+    #             debiased: bool = False,
+    #             gram_threshold: float = None) -> None:
+    #     """
+    #     Computes the feature similarity between the models on the
+    #     given datasets.
+    #     :param dataloader1: (DataLoader)
+    #     :param dataloader2: (DataLoader) If given, model 2 will run on this
+    #                         dataset. (default = None)
+    #     """
+    #     with torch.no_grad():
+    #         if dataloader2 is None:
+    #             warn("Dataloader for Model 2 is not given. Using the same dataloader for both models.")
+    #             dataloader2 = dataloader1
+    #
+    #         self.model1_info['Dataset'] = dataloader1.dataset.__repr__().split('\n')[0]
+    #         self.model2_info['Dataset'] = dataloader2.dataset.__repr__().split('\n')[0]
+    #
+    #         N = len(self.model1_layers) if self.model1_layers is not None else len(list(self.model1.modules()))
+    #         M = len(self.model2_layers) if self.model2_layers is not None else len(list(self.model2.modules()))
+    #
+    #         num_batches = min(len(dataloader1), len(dataloader2))
+    #         # self.cka = torch.zeros(N, M, 3)
+    #         self.cka = torch.zeros(N, M, device=self.device)
+    #         b = 0
+    #
+    #         for x1, x2 in tqdm(zip(dataloader1, dataloader2), desc="| Comparing features |", total=num_batches):
+    #
+    #             self.model1_features = {}
+    #             self.model2_features = {}
+    #             for e1, e2 in zip(x1, x2):
+    #                 if isinstance(x1[e1], torch.Tensor):
+    #                     x1[e1] = x1[e1].to(self.device)
+    #                 if isinstance(x2[e2], torch.Tensor):
+    #                     x2[e2] = x2[e2].to(self.device)
+    #             _ = self.model1(**x1)
+    #             _ = self.model2(**x2)
+    #
+    #             for i, (name1, feat1) in enumerate(self.model1_features.items()):
+    #                 # X: torch.Tensor = feat1.flatten(1)
+    #                 x_last_sh: torch.Tensor = feat1.shape[-1]
+    #                 X: torch.Tensor = feat1.view(-1, x_last_sh)
+    #                 for j, (name2, feat2) in enumerate(self.model2_features.items()):
+    #                     # Y: torch.Tensor = feat2.flatten(1)
+    #                     y_last_sh: torch.Tensor = feat2.shape[-1]
+    #                     Y: torch.Tensor = feat2.view(-1, y_last_sh)
+    #                     # assert K.shape == L.shape, f"Feature shape mistach! {K.shape}, {L.shape}"
+    #
+    #                     # self.cka[i, j] += cka((X @ X.T), (Y @ Y.T), debiased=False) / num_batches
+    #                     if gram_threshold is None:
+    #                         c = linear_CKA(X, Y)
+    #                         c_r = linear_CKA(Y, X)
+    #                         self.cka[i, j] += c
+    #                         self.cka[j, i] += c
+    #
+    #                     else:
+    #                         self.cka[i, j] += cka(gram_rbf(X, gram_threshold), gram_rbf(Y, gram_threshold),
+    #                                               debiased=debiased) / num_batches
+    #             b = b + 1
+    #     assert not torch.isnan(self.cka).any(), "HSIC computation resulted in NANs"
+
     def compare(self,
                 dataloader1: DataLoader,
                 dataloader2: DataLoader = None,
@@ -173,7 +236,9 @@ class CKA:
 
                         # self.cka[i, j] += cka((X @ X.T), (Y @ Y.T), debiased=False) / num_batches
                         if gram_threshold is None:
-                            self.cka[i, j] += cka(gram_linear(X), gram_linear(Y), debiased=debiased) / num_batches
+                            r = cka(gram_linear(X), gram_linear(Y), debiased=debiased) / num_batches
+                            # r = linear_CKA(X, Y)
+                            self.cka[i, j] += r
                         else:
                             self.cka[i, j] += cka(gram_rbf(X, gram_threshold), gram_rbf(Y, gram_threshold),
                                                   debiased=debiased) / num_batches
@@ -198,17 +263,25 @@ class CKA:
     def plot_results(self,
                      save_path: str = None,
                      title: str = None,
-                     show_ticks_labels: str = False):
+                     show_ticks_labels: bool = False,
+                     short_tick_labels_splits: Optional[int] = None,
+                     show_annotations: bool = True):
         import seaborn as sns
         # fig, ax = plt.subplots()
-        ax = sns.heatmap(self.cka.cpu(), annot=True, cmap="magma")
+        ax = sns.heatmap(self.cka.cpu(), annot=show_annotations, cmap="magma")
         ax.invert_yaxis()
 
         if show_ticks_labels:
             ax.set_xlabel(f"Layers {self.model2_info['Name']}", fontsize=10)
             ax.set_ylabel(f"Layers {self.model1_info['Name']}", fontsize=10)
-            ax.set_xticklabels([self.model2_info['Layers']])
-            ax.set_yticklabels([self.model1_info['Layers']])
+            if short_tick_labels_splits is None:
+                ax.set_xticklabels(self.model2_info['Layers'])
+                ax.set_yticklabels(self.model1_info['Layers'])
+            else:
+                ax.set_xticklabels(
+                    ["-".join(module.split(".")[-short_tick_labels_splits:]) for module in self.model2_info['Layers']])
+                ax.set_yticklabels(
+                    ["-".join(module.split(".")[-short_tick_labels_splits:]) for module in self.model1_info['Layers']])
             plt.xticks(rotation=90)
             plt.yticks(rotation=0)
         chart_title = title
@@ -222,6 +295,7 @@ class CKA:
         # plt.tight_layout()
         # plt.figure(figsize=fig_size, dpi=300)
         if save_path is not None:
+            chart_title = chart_title.replace("/", "-")
             path_rel = f"{save_path}/{chart_title}.png"
             plt.savefig(path_rel, dpi=400, bbox_inches="tight")
 

@@ -1,3 +1,4 @@
+import time
 from typing import Dict
 import torch
 torch.backends.cudnn.benchmark = True
@@ -12,7 +13,7 @@ from custom_datasets.MBartTranslationDataset import MBartTranslationDataset
 from trainers.MBartTrainer import MBartTrainer
 import os
 
-project_name = "mbart_ft_en-fr-Mf1"
+project_name = "mbart_pre_de_ft_en-fr(Mf1-2)"
 os.environ["WANDB_PROJECT"] = project_name
 
 # save your trained model checkpoint to wandb
@@ -38,7 +39,7 @@ def compute_bleu_metric(prediction: EvalPrediction):
 
 
 def run_server():
-    training_args = Seq2SeqTrainingArguments(f"/home/n.dallanoce/PyCharm/pretraining/weights/{project_name}_GA",
+    training_args = Seq2SeqTrainingArguments(f"/home/n.dallanoce/PyCharm/pretraining/weights/{project_name}",
                                              overwrite_output_dir=True,
                                              label_names=['labels'],
                                              do_train=True,
@@ -48,17 +49,17 @@ def run_server():
                                              learning_rate=6e-4,
                                              lr_scheduler_type="linear",
                                              # auto_find_batch_size=True,
-                                             per_device_train_batch_size=64,
-                                             gradient_accumulation_steps=4,
+                                             per_device_train_batch_size=128,
+                                             gradient_accumulation_steps=1,
                                              # num_train_epochs=3,  # to change
                                              max_steps=int(1e5),
                                              logging_steps=500,  # 500
-                                             save_steps=5000,  # to restore
+                                             save_steps=10000,  # to restore
                                              log_level="info",
                                              save_strategy="steps",  # steps
                                              load_best_model_at_end=True,
                                              evaluation_strategy="steps",  # steps
-                                             eval_steps=5000,  # to restore
+                                             eval_steps=10000,  # to restore
                                              fp16=True,
                                              dataloader_drop_last=True,
                                              dataloader_pin_memory=True,
@@ -189,7 +190,7 @@ if __name__ == '__main__':
     #                             verification_mode='no_checks', use_auth_token=True)
     val_ds_es_en = load_dataset("yhavinga/ccmatrix", "en-es",
                                 cache_dir="/data/n.dallanoce/cc_en_es",
-                                split=f"train[28000000:28003000]",
+                                split=f"train[40000000:40003000]",
                                 verification_mode='no_checks').with_format("torch", columns=['translation'])
     val_ds_config_en_fr = val_ds_fr_en.config_name.replace("-", "_")  # works with wmt14 datasets
     val_ds_config_en_de = val_ds_de_en.config_name.replace("-", "_")
@@ -201,13 +202,15 @@ if __name__ == '__main__':
     #                                  verification_mode='no_checks')
     # model = MBartForConditionalGeneration.from_pretrained(
     #     "/home/n.dallanoce/PyCharm/pretraining/weights/C-mbart_pre_en-fr/checkpoint-65000")
-    mbart_config = MBartConfig(encoder_layers=6, decoder_layers=6,
-                               encoder_ffn_dim=2048, decoder_ffn_dim=2048,
-                               encoder_attention_heads=8, decoder_attention_heads=8,
-                               d_model=512, max_length=128, vocab_size=tok_en_de.vocab_size, dropout=0.1)
-    #model: MBartForConditionalGeneration = MBartForConditionalGeneration(mbart_config)
+    # mbart_config = MBartConfig(encoder_layers=6, decoder_layers=6,
+    #                            encoder_ffn_dim=2048, decoder_ffn_dim=2048,
+    #                            encoder_attention_heads=8, decoder_attention_heads=8,
+    #                            d_model=512, max_length=128, vocab_size=tok_en_de.vocab_size, dropout=0.1)
+    # model: MBartForConditionalGeneration = MBartForConditionalGeneration(mbart_config)
+
     model = MBartForConditionalGeneration.from_pretrained(
-       "/home/n.dallanoce/PyCharm/pretraining/weights/S2_mbart_pre_en-fr(M1)/checkpoint-180000")
+       "/home/n.dallanoce/PyCharm/pretraining/weights/S2_mbart_pre_en-fr_de(M2)/checkpoint-180000")
+    time.sleep(1.5 * 60 * 60)
     trainer = MBartTrainer(model, training_args,
                            train_dataset=ConcatDataset([en_fr_ds, fr_en_ds]),
                            # eval_dataset={'bleu_en_fr': val_ds, 'bleu_fr_en': val_ds},  # , 'bleu_fr_en': val_ds},
@@ -217,4 +220,5 @@ if __name__ == '__main__':
                            )
 
     # change bleu batch size
+
     trainer.train(resume_from_checkpoint=False)

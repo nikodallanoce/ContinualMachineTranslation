@@ -1,3 +1,4 @@
+import time
 from functools import partial
 
 import datasets
@@ -5,11 +6,11 @@ import torch.utils.data
 from datasets import load_dataset, interleave_datasets
 from torch.utils.data import ConcatDataset, RandomSampler
 from transformers import Seq2SeqTrainingArguments, MBartConfig, \
-    MBartForConditionalGeneration, MBartTokenizerFast
+    MBartForConditionalGeneration, MBartTokenizerFast, EarlyStoppingCallback
 import os
 
 # set the wandb project where this run will be logged
-project_name = "S2_mbart_pre_en-fr_de(M2)"
+project_name = "mbart_pre_en-fr-de-es"
 os.environ["WANDB_PROJECT"] = project_name
 
 # save your trained model checkpoint to wandb
@@ -39,7 +40,7 @@ if __name__ == '__main__':
     #                             cache_dir="/data/n.dallanoce/europarl", split=f"train",
     #                             ignore_verifications=True)
 
-    training_args = Seq2SeqTrainingArguments(f"/home/n.dallanoce/PyCharm/pretraining/weights/{project_name}_replay",
+    training_args = Seq2SeqTrainingArguments(f"/home/n.dallanoce/PyCharm/pretraining/weights/{project_name}_240k-steps",
                                              overwrite_output_dir=True,
                                              label_names=['labels'],
                                              do_train=True,
@@ -49,11 +50,11 @@ if __name__ == '__main__':
                                              per_device_train_batch_size=128,
                                              gradient_accumulation_steps=1,
                                              # num_train_epochs=1,
-                                             max_steps=int(1.8e5),
+                                             max_steps=int(2.4e5),
                                              logging_steps=500,
                                              save_steps=10000,
                                              evaluation_strategy="steps",
-                                             eval_steps=5000,
+                                             eval_steps=10000,
                                              logging_first_step=False,
                                              log_level="info",
                                              save_strategy="steps",
@@ -61,11 +62,12 @@ if __name__ == '__main__':
                                              dataloader_drop_last=True,
                                              dataloader_pin_memory=True,
                                              dataloader_num_workers=4,
-                                             metric_for_best_model="pretraining_loss_de",
+                                             metric_for_best_model="pretraining_avg",
                                              greater_is_better=False,
                                              warmup_steps=0,
                                              save_total_limit=1,
-                                             report_to=["wandb"]
+                                             report_to=["wandb"],
+                                             load_best_model_at_end=True
                                              )
 
     cc100_en = load_dataset("cc100", lang="en",
@@ -110,44 +112,46 @@ if __name__ == '__main__':
                                encoder_attention_heads=8, decoder_attention_heads=8,
                                d_model=512, max_length=128, vocab_size=tok_en.vocab_size, dropout=0.1)
 
-    # model: MBartForConditionalGeneration = MBartForConditionalGeneration(mbart_config)
-    model: MBartForConditionalGeneration = MBartForConditionalGeneration.from_pretrained(
-        "/home/n.dallanoce/PyCharm/pretraining/weights/S2_mbart_pre_en-fr(M1)/checkpoint-180000")
+    model: MBartForConditionalGeneration = MBartForConditionalGeneration(mbart_config)
+    # model: MBartForConditionalGeneration = MBartForConditionalGeneration.from_pretrained(
+    #     "/home/n.dallanoce/PyCharm/pretraining/weights/M2_mbart_pre_en-fr_de/checkpoint-120000")
 
     cc100_en_val = load_dataset("cc100", lang="en",
                                 cache_dir="/data/n.dallanoce/cc100/huggingface",
-                                split=f"train[40000000:40020000]",
+                                split=f"train[60000000:60020000]",
                                 verification_mode='no_checks')
     val_en_pre_train = MBartPreTrainingDataset(cc100_en_val, tok_en, input_max_length=128)
 
     cc100_fr_val = load_dataset("cc100", lang="fr",
                                 cache_dir="/data/n.dallanoce/cc100/huggingface",
-                                split=f"train[40000000:40020000]",
+                                split=f"train[60000000:60020000]",
                                 verification_mode='no_checks')
     val_fr_pre_train = MBartPreTrainingDataset(cc100_fr_val, tok_fr, input_max_length=128)
 
     cc100_de_val = load_dataset("cc100", lang="de",
                                 cache_dir="/data/n.dallanoce/cc100/huggingface",
-                                split=f"train[40000000:40020000]",
+                                split=f"train[60000000:60020000]",
                                 verification_mode='no_checks')
     val_de_pre_train = MBartPreTrainingDataset(cc100_de_val, tok_de, input_max_length=128)
 
     cc100_es_val = load_dataset("cc100", lang="es",
                                 cache_dir="/data/n.dallanoce/cc100/huggingface",
-                                split=f"train[40000000:40020000]",
+                                split=f"train[60000000:60020000]",
                                 verification_mode='no_checks')
     val_es_pre_train = MBartPreTrainingDataset(cc100_es_val, tok_es, input_max_length=128)
 
-    # pre_train_ds = torch.utils.data.ConcatDataset([es_pre_train_ds])
-    curr_exp_ds = de_pre_train_ds
-    buffer = get_buffer(prev_exp_ds=[en_pre_train_ds, fr_pre_train_ds], total_cumulative_size=len(fr_pre_train_ds) * 4)
-    pre_train_ds = ConcatDataset([curr_exp_ds, buffer])
+    pre_train_ds = torch.utils.data.ConcatDataset([en_pre_train_ds, fr_pre_train_ds, de_pre_train_ds, es_pre_train_ds])
+    # curr_exp_ds = fr_pre_train_ds
+    # buffer = get_buffer(prev_exp_ds=[en_pre_train_ds, fr_pre_train_ds, de_pre_train_ds],
+    #                    total_cumulative_size=len(fr_pre_train_ds) * 4)
+    # pre_train_ds = ConcatDataset([curr_exp_ds, buffer])
 
-    batch_sampler = CLSampler((RandomSampler(curr_exp_ds), RandomSampler(buffer)), curr_exp_frac=0.5)
+    batch_sampler = None  # CLSampler((RandomSampler(curr_exp_ds), RandomSampler(buffer)), curr_exp_frac=0.8)
     trainer = MBartTrainer(model, training_args,
                            train_dataset=pre_train_ds,
                            eval_dataset={"pretraining": ConcatDataset(
-                               [val_en_pre_train, val_fr_pre_train, val_de_pre_train])},
-                           batch_sampler=batch_sampler
+                               [val_en_pre_train, val_fr_pre_train, val_de_pre_train, val_es_pre_train])},
+                           batch_sampler=batch_sampler,
+                           callbacks=[EarlyStoppingCallback(early_stopping_patience=5)]
                            )
     trainer.train(resume_from_checkpoint=False)

@@ -171,7 +171,7 @@ if __name__ == '__main__':
     dev = "cuda:0" if torch.cuda.is_available() else "cpu"
     #     # tok_en = MBartTokenizer.from_pretrained("facebook/mbart-large-cc25", lang1="en_XX", lang2="fr_XX")
     model: Union[MBartForConditionalGeneration, MT5ForConditionalGeneration] = AutoModelForSeq2SeqLM.from_pretrained(
-        "/home/n.dallanoce/PyCharm/pretraining/weights/mbart_ft_en-fr-Mf1_GA/checkpoint-85000").to(dev)
+        "/home/n.dallanoce/PyCharm/pretraining/weights/mt6_pre_es_ft_en-de(MF2-3)_10_20_tb_replay_8/checkpoint-100000").to(dev)
     # translation_ds = load_dataset("yhavinga/ccmatrix", "en-es",
     #                               cache_dir="/data/n.dallanoce/cc_en_es",
     #                               split=f"train[28000000:28003000]",
@@ -185,16 +185,16 @@ if __name__ == '__main__':
     #                               verification_mode='no_checks')
 
     # print(len(translation_ds))
-    translation_ds = load_dataset("wmt14", "fr-en",
+    translation_ds = load_dataset("wmt14", "de-en",
                                   cache_dir="/data/n.dallanoce/wmt14",
                                   split=f"test",
                                   verification_mode='no_checks')
-    src_lang, tgt_lang = "en", "fr"
+    src_lang, tgt_lang = "en", "de"
 
     with torch.no_grad():
         model.eval()
         bleu = compute_bleu_auto_model(translation_ds, model, src_lang=src_lang, tgt_lang=tgt_lang, device=dev, num_beams=5,
-                                   batch_size=32, bleu_type="sacrebleu", bleu_tokenizer='intl', tokenizer_name=None)
+                                   batch_size=32, bleu_type="sacrebleu", bleu_tokenizer=None, tokenizer_name=None)
     # bleu = compute_bleu_mt6(translation_ds, model, src_lang=src_lang, tgt_lang=tgt_lang, device=dev, num_beams=5,
     #                         batch_size=32, bleu_type="sacrebleu", bleu_tokenizer="intl",
     #                         tokenizer_name="nikodallanoce/mt6_tok_fast",
