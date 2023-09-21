@@ -13,7 +13,7 @@ from custom_datasets.MBartTranslationDataset import MBartTranslationDataset
 from trainers.MBartTrainer import MBartTrainer
 import os
 
-project_name = "mbart_pre_de_ft_en-fr(Mf1-2)"
+project_name = "mbart_ft_en-es(Mf3)"
 os.environ["WANDB_PROJECT"] = project_name
 
 # save your trained model checkpoint to wandb
@@ -39,7 +39,7 @@ def compute_bleu_metric(prediction: EvalPrediction):
 
 
 def run_server():
-    training_args = Seq2SeqTrainingArguments(f"/home/n.dallanoce/PyCharm/pretraining/weights/{project_name}",
+    training_args = Seq2SeqTrainingArguments(f"/home/n.dallanoce/PyCharm/pretraining/weights/{project_name}_joint_240k",
                                              overwrite_output_dir=True,
                                              label_names=['labels'],
                                              do_train=True,
@@ -209,12 +209,12 @@ if __name__ == '__main__':
     # model: MBartForConditionalGeneration = MBartForConditionalGeneration(mbart_config)
 
     model = MBartForConditionalGeneration.from_pretrained(
-       "/home/n.dallanoce/PyCharm/pretraining/weights/S2_mbart_pre_en-fr_de(M2)/checkpoint-180000")
-    time.sleep(1.5 * 60 * 60)
+       "/home/n.dallanoce/PyCharm/pretraining/weights/mbart_pre_en-fr-de-es_240k-steps/checkpoint-240000")
+    #time.sleep(5.75 * 60 * 60)
     trainer = MBartTrainer(model, training_args,
-                           train_dataset=ConcatDataset([en_fr_ds, fr_en_ds]),
+                           train_dataset=ConcatDataset([en_es_ds, es_en_ds]),
                            # eval_dataset={'bleu_en_fr': val_ds, 'bleu_fr_en': val_ds},  # , 'bleu_fr_en': val_ds},
-                           eval_dataset={"bleu": ConcatDataset([val_ds_fr_en])},
+                           eval_dataset={"bleu": ConcatDataset([val_ds_es_en])},
                            #callbacks=[EarlyStoppingCallback(early_stopping_patience=4)],
                            tokenizer_name=tok_name
                            )

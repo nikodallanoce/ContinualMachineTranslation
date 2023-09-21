@@ -189,7 +189,7 @@ class CKA:
                 dataloader1: DataLoader,
                 dataloader2: DataLoader = None,
                 debiased: bool = False,
-                gram_threshold: float = None) -> None:
+                gram_threshold: float = None) -> float:
         """
         Computes the feature similarity between the models on the
         given datasets.
@@ -243,6 +243,7 @@ class CKA:
                             self.cka[i, j] += cka(gram_rbf(X, gram_threshold), gram_rbf(Y, gram_threshold),
                                                   debiased=debiased) / num_batches
         assert not torch.isnan(self.cka).any(), "HSIC computation resulted in NANs"
+        return float(torch.mean(torch.diag(self.cka)).cpu())
 
     def export(self) -> Dict:
         """
@@ -265,15 +266,15 @@ class CKA:
                      title: str = None,
                      show_ticks_labels: bool = False,
                      short_tick_labels_splits: Optional[int] = None,
-                     show_annotations: bool = True):
+                     show_annotations: bool = True,
+                     show_img: bool = True):
         import seaborn as sns
         # fig, ax = plt.subplots()
         ax = sns.heatmap(self.cka.cpu(), annot=show_annotations, cmap="magma")
         ax.invert_yaxis()
-
+        ax.set_xlabel(f"Layers {self.model2_info['Name']}", fontsize=10)
+        ax.set_ylabel(f"Layers {self.model1_info['Name']}", fontsize=10)
         if show_ticks_labels:
-            ax.set_xlabel(f"Layers {self.model2_info['Name']}", fontsize=10)
-            ax.set_ylabel(f"Layers {self.model1_info['Name']}", fontsize=10)
             if short_tick_labels_splits is None:
                 ax.set_xticklabels(self.model2_info['Layers'])
                 ax.set_yticklabels(self.model1_info['Layers'])
@@ -298,8 +299,8 @@ class CKA:
             chart_title = chart_title.replace("/", "-")
             path_rel = f"{save_path}/{chart_title}.png"
             plt.savefig(path_rel, dpi=400, bbox_inches="tight")
-
-        plt.show()
+        if show_img:
+            plt.show()
 
     def sanity_check(self) -> Set[Tuple[int, int]]:
         idx_sanity_fail: Set[Tuple[int, int]] = set()

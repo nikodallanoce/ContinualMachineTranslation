@@ -12,6 +12,7 @@ from transformers import Trainer, PreTrainedModel, TrainingArguments, DataCollat
     EvalPrediction, TrainerCallback, MT5Tokenizer
 from transformers.utils import is_torch_fx_proxy
 
+from MT6 import MT6
 from custom_datasets.MT6PreTrainingDataset import MT6PreTrainingDataset
 from eval.bleu_utility import compute_bleu_mt6
 from trainers.CustomTrainer import CustomTrainer
@@ -34,7 +35,7 @@ class MT6Trainer(CustomTrainer):
                  batch_sampler: BatchSampler = None):
         super().__init__(model, args, data_collator, train_dataset, eval_dataset, tokenizer, model_init,
                          compute_metrics, callbacks, optimizers, preprocess_logits_for_metrics, tokenizer_name, batch_sampler)
-        self.labels = ["labels_pnat", "labels_tsc"] if task == TrainingStrategy.PRE_TRAINING else ["labels"]
+        self.labels = ["labels_pnat", "labels_tsc"] if (task == TrainingStrategy.PRE_TRAINING and isinstance(model, MT6)) else ["labels"]
         self.task = task
 
     def compute_bleu(self, eval_ds: Dataset, model: PreTrainedModel, src_lang: str, tgt_lang: str, bleu_type: str,
@@ -131,7 +132,7 @@ class MT6Trainer(CustomTrainer):
         return shifted_input_ids
 
     def compute_loss(self, model, inputs, return_outputs=False):
-        if self.task == TrainingStrategy.PRE_TRAINING:
+        if self.task == TrainingStrategy.PRE_TRAINING and isinstance(self.model, MT6):
             loss = self.compute_mt6_loss(model, inputs, return_outputs)
             return loss
         else:

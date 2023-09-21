@@ -26,6 +26,11 @@ class MT6PreTrainingDataset(Dataset):
         self.ds_field: str = ds_field
         self.noise_fn: Union[MT6NoiseFunction, MT5NoiseFunction] = noise_fn
         self.ref_len: int = round(input_max_length - input_max_length * 0.35)
+        if isinstance(self.noise_fn, MT5NoiseFunction):
+            self.labels = "labels"
+        else:
+            self.labels = "labels_pnat"
+
 
     def __len__(self):
         return len(self.dataset)
@@ -49,7 +54,7 @@ class MT6PreTrainingDataset(Dataset):
         att_mask, labels, input_ids = noise_and_tokenize(self.input_max_length, self.noise_fn, index, text,
                                                          self.tokenizer, self.ref_len, tensor_version=True)
 
-        outputs = {"input_ids": input_ids, "labels_pnat": labels, "attention_mask": att_mask}
+        outputs = {"input_ids": input_ids, self.labels: labels, "attention_mask": att_mask}
 
         return outputs
 
@@ -105,28 +110,6 @@ def translation_span_corruption(input_max_length: int, noise_fn: Union[MT5NoiseF
     src_txt = f"{tokenizer.eos_token} ".join(transl_pairs)
     att_mask, labels, input_ids = tokenize(src_txt, tgt_txt, noise_fn, input_max_length, tokenizer)
     return att_mask, labels, input_ids
-
-
-# def noise_and_tokenize(input_max_length, noise_fn, seed, text, tokenizer):
-#     text = text.strip()
-#     txt_lst = text.split()
-#     ref_len = round(input_max_length - 0.4 * input_max_length)
-#     ref_len = len(txt_lst) if len(txt_lst) < ref_len else ref_len
-#     text = " ".join(filter(None, txt_lst[0:ref_len]))
-#     label_ids, targets = noise_fn.compute(text, seed)
-#     input_tok = tokenizer(text, return_special_tokens_mask=False,
-#                           add_special_tokens=True, truncation=True,
-#                           max_length=input_max_length, padding='longest')
-#     out_tok = tokenizer(targets, return_special_tokens_mask=False,
-#                         add_special_tokens=True, truncation=True,
-#                         max_length=input_max_length, padding='longest',
-#                         return_attention_mask=False, return_token_type_ids=False)
-#
-#     input_ids: List[int] = input_tok['input_ids']
-#     att_mask: List[int] = input_tok['attention_mask']
-#     labels: List[int] = out_tok['input_ids']
-#     labels = [-100 if e == tokenizer.pad_token_id else e for e in labels]
-#     return att_mask, labels, input_ids
 
 def noise_and_tokenize(input_max_length, noise_fn, seed, text, tokenizer, ref_len: int = None,
                        tensor_version: bool = False):
@@ -204,5 +187,7 @@ def tokenize_torch(inp_text: str, targets: Union[str, List[str]], noise_fn: Unio
             dummy_tensor = torch.empty(noise_fn.n_groups - labels.shape[0], labels.shape[1], dtype=torch.int).fill_(
                 -100)
             labels = torch.cat([labels, dummy_tensor], dim=0)
+    else:
+        labels = labels.view(-1)
 
     return att_mask.view(-1), labels, input_ids.view(-1)
