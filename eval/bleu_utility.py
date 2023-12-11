@@ -2,25 +2,26 @@ from typing import List, Dict, Union, Any
 
 import evaluate
 import torch
-from datasets import load_dataset
+from datasets import load_dataset, DatasetDict
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from transformers import MBartForConditionalGeneration, MBartTokenizer, \
     PreTrainedTokenizer, PreTrainedModel, AutoTokenizer, MT5ForConditionalGeneration, \
     T5ForConditionalGeneration, AutoModelForSeq2SeqLM
 from datasets import Dataset
-import os
 import sys
+import os
 
-sys.path.insert(0, '/home/n.dallanoce/PyCharm/pretraining')
+sys.path.insert(0, str(os.getcwd()))
 from MT6TokenizerFast import MT6TokenizerFast
 
 PREFIX_TASK = {'en': "English", 'fr': "French", 'de': "German", 'es': "Spanish"}
+FLORES_LANG = {"en": "sentence_eng_Latn", "fr": "sentence_fra_Latn", "de": "sentence_deu_Latn",
+               "es": "sentence_spa_Latn"}
 
 
-#
 # os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"  # see issue #152
-# os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+# os.environ["CUDA_VISIBLE_DEVICES"] = ""
 
 
 def tokenize(examples: List[Dict[str, str]], **kwargs):
@@ -63,7 +64,7 @@ def compute_bleu_mbart(trans_pair_ds: Dataset,
     test_loader: DataLoader = create_dataloader(trans_pair_ds, input_column, fn_kwargs, batch_size)
     decoder_start_token_id: int = tokenizer.convert_tokens_to_ids(tgt_tok)
     results = compute_hugg_bleu(decoder_start_token_id, device, max_length, model, num_beams, test_loader, tokenizer,
-                                bleu_type, bleu_tokenizer)
+                                bleu_type, bleu_tokenizer, tokenizer.eos_token_id)
     return results
 
 
@@ -107,19 +108,20 @@ def compute_bleu_mt6(trans_pair_ds: Dataset,
     test_loader: DataLoader = create_dataloader(trans_pair_ds, input_column, fn_kwargs, batch_size)
     # decoder_start_token_id = tokenizer.pad_token_id
     results = compute_hugg_bleu(decoder_start_token_id, device, max_length, model, num_beams, test_loader, tokenizer,
-                                bleu_type, bleu_tokenizer)
+                                bleu_type, bleu_tokenizer, tokenizer.eos_token_id)
     return results
 
 
 def compute_hugg_bleu(decoder_start_token_id: int, device: str, max_length: int,
                       model: Union[MT5ForConditionalGeneration, MBartForConditionalGeneration], num_beams: int,
                       test_loader: DataLoader, tokenizer: PreTrainedTokenizer,
-                      bleu_type: str, bleu_tokenizer: str) -> Dict[str, Any]:
+                      bleu_type: str, bleu_tokenizer: str, eos_token_id: int) -> Dict[str, Any]:
     bleu_metric = evaluate.load(bleu_type)
     for i, batch in enumerate(tqdm(test_loader)):
         with torch.no_grad():
             translation = model.generate(batch['input_ids'].to(device), num_beams=num_beams, max_length=max_length,
-                                         forced_bos_token_id=decoder_start_token_id)
+                                         decoder_start_token_id=decoder_start_token_id, eos_token_id=eos_token_id)
+            #preds = tokenizer.batch_decode(translation, skip_special_tokens=True)
         bleu_metric.add_batch(predictions=tokenizer.batch_decode(translation, skip_special_tokens=True),
                               references=[[elem] for elem in batch['original_text']])
 
@@ -131,7 +133,7 @@ def compute_hugg_bleu(decoder_start_token_id: int, device: str, max_length: int,
 
 def create_dataloader(trans_pair_ds: Dataset, input_column: str, fn_kwargs: Dict[str, Any],
                       batch_size: int) -> DataLoader:
-    trans_pair_ds = trans_pair_ds.map(tokenize, batched=True, input_columns=[input_column],
+    trans_pair_ds = trans_pair_ds.map(tokenize, batched=True, input_columns=input_column,
                                       fn_kwargs=fn_kwargs)
     trans_pair_ds = trans_pair_ds.with_format('torch', columns=["input_ids", "original_text"])
     test_loader = DataLoader(trans_pair_ds, num_workers=4, batch_size=batch_size, drop_last=False, pin_memory=True)
@@ -169,9 +171,11 @@ if __name__ == '__main__':
     #     # to_translate, original = translation_ds[1]['translation']['en'], translation_ds[1]['translation']['fr']
     #
     dev = "cuda:0" if torch.cuda.is_available() else "cpu"
+    #dev="cpu"
+
     #     # tok_en = MBartTokenizer.from_pretrained("facebook/mbart-large-cc25", lang1="en_XX", lang2="fr_XX")
     model: Union[MBartForConditionalGeneration, MT5ForConditionalGeneration] = AutoModelForSeq2SeqLM.from_pretrained(
-        "/home/n.dallanoce/PyCharm/pretraining/weights/mt6_pre_es_ft_en-de(MF2-3)_10_20_tb_replay_8/checkpoint-100000").to(dev)
+        "/data/n.dallanoce/weights/mt5_ft_en-fr_M1F1_t5_mbart_lion/checkpoint-95000").to(dev)
     # translation_ds = load_dataset("yhavinga/ccmatrix", "en-es",
     #                               cache_dir="/data/n.dallanoce/cc_en_es",
     #                               split=f"train[28000000:28003000]",
@@ -185,19 +189,26 @@ if __name__ == '__main__':
     #                               verification_mode='no_checks')
 
     # print(len(translation_ds))
-    translation_ds = load_dataset("wmt14", "de-en",
+    translation_ds = load_dataset("wmt14", "fr-en",
                                   cache_dir="/data/n.dallanoce/wmt14",
                                   split=f"test",
                                   verification_mode='no_checks')
-    src_lang, tgt_lang = "en", "de"
+
+    # flores = load_dataset("facebook/flores", "eng_Latn-spa_Latn", cache_dir="/data/n.dallanoce/flores", split="devtest")
+    # translation_ds = Dataset.from_dict(
+    #     {"translation": Dataset.from_dict({"en": flores['sentence_eng_Latn'], "es": flores['sentence_spa_Latn']})})
+
+    src_lang, tgt_lang = "en", "fr"
 
     with torch.no_grad():
-        model.eval()
-        bleu = compute_bleu_auto_model(translation_ds, model, src_lang=src_lang, tgt_lang=tgt_lang, device=dev, num_beams=5,
-                                   batch_size=32, bleu_type="sacrebleu", bleu_tokenizer=None, tokenizer_name=None)
-    # bleu = compute_bleu_mt6(translation_ds, model, src_lang=src_lang, tgt_lang=tgt_lang, device=dev, num_beams=5,
-    #                         batch_size=32, bleu_type="sacrebleu", bleu_tokenizer="intl",
-    #                         tokenizer_name="nikodallanoce/mt6_tok_fast",
-    #                         use_lang_tokens=True)
+        model.train(False)
+        bleu = compute_bleu_mt6(translation_ds, model, src_lang=src_lang, tgt_lang=tgt_lang, device=dev,
+                                num_beams=5,
+                                batch_size=64, bleu_type="sacrebleu", bleu_tokenizer="intl",
+                                tokenizer_name="google/t5-v1_1-small")
+        # bleu = compute_bleu_mt6(translation_ds, model, src_lang=src_lang, tgt_lang=tgt_lang, device=dev, num_beams=5,
+        #                         batch_size=32, bleu_type="sacrebleu", bleu_tokenizer="intl",
+        #                         tokenizer_name="nikodallanoce/mt6_tok_fast",
+        #                         use_lang_tokens=True)
         s_k = next(iter(bleu))
         print(f"{src_lang} --> {tgt_lang}: {bleu[s_k]}")

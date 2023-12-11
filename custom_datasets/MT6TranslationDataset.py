@@ -22,7 +22,7 @@ class MT6TranslationDataset(Dataset):
 
     def __init__(self, hugg_dataset: datasets.Dataset, tokenizer: MT5TokenizerFast, tgt_lang: str,
                  src_lang: str = "en", ds_field="translation", input_max_length: int = 128, min_words: int = 4,
-                 skip_rows: Set[int] = None, noise_fn=MT6NoiseFunction(pnat=True)):
+                 skip_rows: Set[int] = None, noise_fn=MT6NoiseFunction(pnat=True), concat_sents: bool = True):
         super(MT6TranslationDataset, self).__init__()
 
         self.dataset: datasets.Dataset = hugg_dataset
@@ -40,6 +40,7 @@ class MT6TranslationDataset(Dataset):
         self.skip_rows: Set = set() if skip_rows is None else skip_rows
         self.noise_fn: MT6NoiseFunction = noise_fn
         self.labels_name: str = "labels" if noise_fn is None else "labels_tsc"
+        self.concat_sents: bool = concat_sents
 
     def __len__(self):
         return len(self.dataset)
@@ -89,7 +90,10 @@ class MT6TranslationDataset(Dataset):
                 'attention_mask': att_mask}
 
     def append_sentences(self, src: str, tgt: str, eos_sep: str, rng):
-        while len(src.split(" ")) < (self.input_max_length - self.input_max_length * 0.35):
+        tgt_len = self.input_max_length - self.input_max_length * 0.35
+        if not self.concat_sents:
+            tgt_len = 3
+        while len(src.split(" ")) < tgt_len:
             app_src, app_tgt = self.retrieve_src_tgt(rng)
             if len(app_src.split()) > 3 and len(app_tgt.split()) > 3:
                 src = src + eos_sep + app_src

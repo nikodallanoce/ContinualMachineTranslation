@@ -1,8 +1,7 @@
 from typing import Tuple, List
 
 import math
-from clearml import Dataset
-from torch.utils.data import Sampler, BatchSampler, Subset, ConcatDataset
+from torch.utils.data import Sampler, BatchSampler, Subset, ConcatDataset, Dataset
 import numpy as np
 
 

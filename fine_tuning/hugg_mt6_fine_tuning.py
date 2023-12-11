@@ -5,12 +5,16 @@ import datasets
 import torch.nn
 from datasets import load_dataset
 import transformers
+from torch.optim import AdamW, Adam, SGD
 from torch.utils.data import ConcatDataset
 from transformers import Seq2SeqTrainingArguments, MT5ForConditionalGeneration, MT5Config, MT5TokenizerFast, \
-    T5ForConditionalGeneration, T5TokenizerFast, AutoTokenizer
+    T5ForConditionalGeneration, AutoTokenizer, AutoModelForSeq2SeqLM, \
+    get_cosine_with_hard_restarts_schedule_with_warmup, Adafactor, get_inverse_sqrt_schedule, \
+    get_linear_schedule_with_warmup
 import sys
+import os
 
-sys.path.insert(0, '/home/n.dallanoce/PyCharm/pretraining')
+sys.path.insert(0, str(os.getcwd()))
 from custom_datasets.MT6TranslationDataset import MT6TranslationDataset
 from MT6TokenizerFast import MT6TokenizerFast
 from iterable_datasets.IterMT6PreTrainingDataset import IterMT6PreTrainingDataset
@@ -19,11 +23,10 @@ from noise_functions.MT5NoiseFunction import MT5NoiseFunction
 from noise_functions.MT6NoiseFunction import MT6NoiseFunction
 from custom_datasets.MT6PreTrainingDataset import MT6PreTrainingDataset, get_item_for_iterable
 from trainers.MT6Trainer import MT6Trainer, TrainingStrategy
-import os
 
 # os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"  # see issue #152
-#os.environ["CUDA_VISIBLE_DEVICES"] = ""
-project_name = "mt6_ft_only_en-de"
+# os.environ["CUDA_VISIBLE_DEVICES"] = "2,3"
+project_name = "mt5_ft_en-fr_M1F1"
 os.environ["WANDB_PROJECT"] = project_name
 
 # save your trained model checkpoint to wandb
@@ -37,7 +40,7 @@ os.environ["WANDB_WATCH"] = "false"
 if __name__ == '__main__':
 
     training_args = Seq2SeqTrainingArguments(
-        f"/home/n.dallanoce/PyCharm/pretraining/weights/{project_name}_ft_only_tb",
+        f"/data/n.dallanoce/weights/{project_name}_t5_mbart_lion",
         overwrite_output_dir=True,
         # label_names=['labels_pnat', 'labels_transl'],
         do_train=True,
@@ -48,13 +51,13 @@ if __name__ == '__main__':
         learning_rate=1e-4,
         lr_scheduler_type="linear",
         max_steps=int(1e5),
-        logging_steps=500,
-        save_steps=10000,
+        logging_steps=250,
+        save_steps=5000,
         save_strategy="steps",
         log_level="info",
         load_best_model_at_end=True,
         evaluation_strategy="steps",
-        eval_steps=10000,
+        eval_steps=5000,
         logging_first_step=False,
         fp16=True,
         dataloader_drop_last=True,
@@ -65,13 +68,41 @@ if __name__ == '__main__':
         metric_for_best_model="bleu_avg",
         greater_is_better=True,
         report_to=["wandb"],
-        ignore_data_skip=False
+        ignore_data_skip=False,
+        save_safetensors=False,
+        torch_compile=torch.__version__.startswith("2")
+    )
+
+    # model = MT5ForConditionalGeneration(
+    #     MT5Config(num_layers=6, num_decoder_layers=6, d_model=512, num_heads=8, d_ff=2048, vocab_size=len(tok),
+    #               max_length=133, tie_word_embeddings=True))
+    # model = T5ForConditionalGeneration.from_pretrained(
+    #     "google/t5-v1_1-small", max_length=max_inp_len, tie_word_embeddings=False)
+    # model = MT5ForConditionalGeneration(
+    #     MT5Config(num_layers=6, d_model=512, num_heads=8, d_ff=2048,
+    #               vocab_size=len(AutoTokenizer.from_pretrained("google/t5-v1_1-small")), max_length=133,
+    #               tie_word_embeddings=True))
+    # time.sleep(12600)
+    model = AutoModelForSeq2SeqLM.from_pretrained(
+        pretrained_model_name_or_path="/data/n.dallanoce/weights/mt5_pre_en-fr(M1)_t5_mbart/checkpoint-180000",
+        # pretrained_model_name_or_path="google/t5-v1_1-small",
     )
 
     train_strategy = TrainingStrategy.FINE_TUNING
 
     if train_strategy == TrainingStrategy.FINE_TUNING:
-        tok_name = "nikodallanoce/mt5-cc4-vanilla-32k-5"
+        choice: str = input(
+            "Do you want to use T5 original tokenizer, the custom one or the automatic one?\nAnswer t5, custom or auto: ")
+        if choice == "t5":
+            tok_name = "google/t5-v1_1-small"
+        elif choice == "custom":
+            tok_name = "nikodallanoce/mt5-cc4-vanilla-32k-5"
+        elif choice == "auto":
+            tok_name = "nikodallanoce/mt5-cc4-vanilla-32k-5"
+            if not model.name_or_path.startswith("/"):
+                tok_name = model.name_or_path
+        else:
+            raise ValueError("Invalid choice.")
         tok = AutoTokenizer.from_pretrained(tok_name)
         max_inp_len = 133
     elif train_strategy == TrainingStrategy.FINE_TUNING_LANG:
@@ -79,11 +110,15 @@ if __name__ == '__main__':
         tok = MT6TokenizerFast.from_pretrained(tok_name)
         max_inp_len = 128
         print("Using lang tokens")
+    elif not model.name_or_path.startswith("/"):
+        tok_name = model.name_or_path
+        tok = AutoTokenizer.from_pretrained(tok_name)
+        max_inp_len = 133
     else:
         raise ValueError("Select FINE TUNING or FINE TUNING LANG")
 
     translation_ds_en_fr = load_dataset("yhavinga/ccmatrix", "en-fr",
-                                        cache_dir="/data/n.dallanoce/cc_en_fr",
+                                        cache_dir="/data/n.dallanoce/ccmatrix",
                                         split=f"train[0:35000000]",
                                         verification_mode='no_checks')
 
@@ -95,7 +130,8 @@ if __name__ == '__main__':
                                                 100970169, 115986518, 127680776, 141459031, 156717917, 157018533,
                                                 162558439, 164150364, 175041176, 184342700, 190148649, 190148650,
                                                 192658445, 220362372, 245452855, 256201123, 271393589, 272871204,
-                                                272877704, 281597372, 294584774, 296244867, 321887045})
+                                                272877704, 281597372, 294584774, 296244867, 321887045},
+                                     concat_sents=True)
     fr_en_ds = MT6TranslationDataset(translation_ds_en_fr, tok, src_lang="fr", tgt_lang="en",
                                      input_max_length=max_inp_len,
                                      noise_fn=None,
@@ -108,9 +144,9 @@ if __name__ == '__main__':
                                                 246716684, 246848239, 251633313, 252437626, 258612355, 260023316,
                                                 261848203, 266413071, 269838607, 271039088, 280243425, 290825579,
                                                 303987750, 304028810, 310067703, 310183397, 314725258, 323880921,
-                                                324665884})
+                                                324665884}, concat_sents=True)
     translation_ds_en_de = load_dataset("yhavinga/ccmatrix", "en-de",
-                                        cache_dir="/data/n.dallanoce/cc_en_de",
+                                        cache_dir="/data/n.dallanoce/ccmatrix",
                                         split=f"train[0:35000000]",
                                         verification_mode='no_checks')
 
@@ -134,7 +170,7 @@ if __name__ == '__main__':
                                                 198435949, 199964247, 230948265, 240673484, 245361151, 246664703})
 
     translation_ds_en_es = load_dataset("yhavinga/ccmatrix", "en-es",
-                                        cache_dir="/data/n.dallanoce/cc_en_es",
+                                        cache_dir="/data/n.dallanoce/ccmatrix",
                                         split=f"train[0:35000000]",
                                         verification_mode='no_checks')
 
@@ -176,31 +212,27 @@ if __name__ == '__main__':
     #                             split=f"validation",
     #                             verification_mode='no_checks', use_auth_token=True)
     val_ds_es_en = load_dataset("yhavinga/ccmatrix", "en-es",
-                                cache_dir="/data/n.dallanoce/cc_en_es",
+                                cache_dir="/data/n.dallanoce/ccmatrix",
                                 split=f"train[40000000:40003000]",
                                 verification_mode='no_checks').with_format("torch", columns=['translation'])
     val_ds_config_en_fr = val_ds_fr_en.config_name.replace("-", "_")  # works with wmt14 datasets
     val_ds_config_en_de = val_ds_de_en.config_name.replace("-", "_")
     val_ds_config_en_es = val_ds_es_en.config_name.replace("-", "_")
 
-    model = MT5ForConditionalGeneration(
-        MT5Config(num_layers=6, num_decoder_layers=6, d_model=512, num_heads=8, d_ff=2048, vocab_size=len(tok),
-                  max_length=133, tie_word_embeddings=True))
-    # model = T5ForConditionalGeneration.from_pretrained(
-    #     "google/t5-v1_1-small", max_length=max_inp_len, tie_word_embeddings=False)
-    # model = MT5ForConditionalGeneration(
-    #     MT5Config(vocab_size=len(tok), max_length=max_inp_len, tie_word_embeddings=True))
-    # time.sleep(12600)
-    # model = MT5ForConditionalGeneration.from_pretrained(
-    #     "/home/n.dallanoce/PyCharm/pretraining/weights/mt6_pre_en-fr_de_es(M3)_10_20_tb/checkpoint-180000")
-
     # if train_strategy == TrainingStrategy.FINE_TUNING_LANG:
     #     model.resize_token_embeddings(len(tok))
-    #time.sleep(5*60*60)
+    # time.sleep(5*60*60)
+    from lion_pytorch.lion_pytorch import Lion
+
+    optim = Lion(filter(lambda p: p.requires_grad, model.parameters()), lr=training_args.learning_rate)
+
     trainer = MT6Trainer(train_strategy, model, training_args,
-                         train_dataset=ConcatDataset([en_de_ds, de_en_ds]),
-                         eval_dataset={"bleu": ConcatDataset([val_ds_de_en])},
-                         tokenizer_name=tok_name
+                         train_dataset=ConcatDataset([en_fr_ds, fr_en_ds]),
+                         eval_dataset={"bleu": ConcatDataset([val_ds_fr_en])},
+                         tokenizer_name=tok.name_or_path,
+                         optimizers=(
+                             optim, get_linear_schedule_with_warmup(optim, num_warmup_steps=0,
+                                                                    num_training_steps=training_args.max_steps))
                          )
 
     trainer.train(resume_from_checkpoint=False)

@@ -1,3 +1,4 @@
+import time
 from functools import partial
 from typing import Union, Optional, Callable, Dict, List, Tuple, Any
 
@@ -140,6 +141,8 @@ class MT6Trainer(CustomTrainer):
             if self.task == TrainingStrategy.FINE_TUNING_LANG:
                 inp["decoder_input_ids"] = self.shift_tokens_right(input_ids=inp["labels"],
                                                                    pad_token_id=self.model.config.pad_token_id)
+            else:
+                inp["decoder_input_ids"] = self.shift_right(input_ids=inp["labels"])
             return super().compute_loss(model, inp, return_outputs)
 
     def compute_mt6_loss(self, model, inputs, return_outputs):

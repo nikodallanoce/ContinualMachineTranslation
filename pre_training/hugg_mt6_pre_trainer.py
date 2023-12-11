@@ -281,6 +281,7 @@ if __name__ == '__main__':
                          train_dataset=pre_train_ds,
                          eval_dataset={"pretraining": ConcatDataset(
                              [pre_en_val, pre_de_val, en_de_tsc_val])},
-                         batch_sampler=batch_sampler
+                         batch_sampler=batch_sampler,
+                         tokenizer_name=tok.name_or_path
                          )
     trainer.train(resume_from_checkpoint=False)
